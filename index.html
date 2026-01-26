@@ -9,21 +9,16 @@
   <meta name="theme-color" content="#fb923c">
   <title>Homestead Helper Pro</title>
   
-  <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json">
-  
-  <!-- Apple Touch Icons -->
   <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23fb923c' width='100' height='100'/%3E%3Ctext y='75' font-size='70' text-anchor='middle' x='50'%3E🏡%3C/text%3E%3C/svg%3E">
   
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- React and ReactDOM -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   
   <style>
     body {
@@ -78,29 +73,20 @@
   <div id="root"></div>
 
   <script>
-    // Polyfill for storage API
-    if (!window.storage) {
-      window.storage = {
-        async get(key) {
-          const value = localStorage.getItem(key);
-          return value ? { key, value, shared: false } : null;
-        },
-        async set(key, value) {
-          localStorage.setItem(key, value);
-          return { key, value, shared: false };
-        },
-        async delete(key) {
-          localStorage.removeItem(key);
-          return { key, deleted: true, shared: false };
-        },
-        async list(prefix) {
-          const keys = Object.keys(localStorage).filter(k => 
-            !prefix || k.startsWith(prefix)
-          );
-          return { keys, prefix, shared: false };
-        }
-      };
-    }
+    // Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDSR3019LmFBUSLUfr3xCNW67WpXKc9edQ",
+      authDomain: "homestead-helper-fdc23.firebaseapp.com",
+      projectId: "homestead-helper-fdc23",
+      storageBucket: "homestead-helper-fdc23.firebasestorage.app",
+      messagingSenderId: "704725515036",
+      appId: "1:704725515036:web:4dd3427e51afe507b018d9",
+      measurementId: "G-NZX2TPDB0L"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
 
     // Main App
     const { useState, useEffect, useRef, createElement: h } = React;
@@ -110,13 +96,12 @@
       const [selectedModule, setSelectedModule] = useState(null);
       const [tasks, setTasks] = useState({});
       const [photos, setPhotos] = useState({});
-      const [analytics, setAnalytics] = useState({});
       const [showAgent, setShowAgent] = useState(false);
-      const [showAnalytics, setShowAnalytics] = useState(false);
       const [showGeofences, setShowGeofences] = useState(false);
       const [agentInput, setAgentInput] = useState('');
       const [agentMessages, setAgentMessages] = useState([]);
       const [isLoading, setIsLoading] = useState(false);
+      const [isSyncing, setIsSyncing] = useState(false);
       const [isDark, setIsDark] = useState(true);
       const [geofences, setGeofences] = useState([]);
       const [currentLocation, setCurrentLocation] = useState(null);
@@ -138,7 +123,6 @@
         { id: 'household', name: 'Household', color: '#fb923c', emoji: '🏠' },
       ];
 
-      // Default geofences
       const defaultGeofences = [
         {
           id: 'farmstand',
@@ -152,18 +136,82 @@
           reminders: [
             'Check if anyone bought eggs and grab the cash',
             'Replace any purchased items with fresh stock',
-            'Make sure the cash box is secure',
-            'Check that prices are clearly displayed'
+            'Make sure the cash box is secure'
           ]
         }
       ];
 
-      // Initialize
+      // Initialize - Load from Firebase
       useEffect(() => {
-        loadData();
+        loadFromFirebase();
         requestLocationPermission();
         handleURLParameters();
       }, []);
+
+      // Real-time sync from Firebase
+      useEffect(() => {
+        const unsubscribeTasks = db.collection('homesteads').doc('family').collection('tasks')
+          .onSnapshot((snapshot) => {
+            const tasksData = {};
+            snapshot.forEach((doc) => {
+              tasksData[doc.id] = doc.data().items || [];
+            });
+            setTasks(tasksData);
+          });
+
+        const unsubscribePhotos = db.collection('homesteads').doc('family').collection('photos')
+          .onSnapshot((snapshot) => {
+            const photosData = {};
+            snapshot.forEach((doc) => {
+              photosData[doc.id] = doc.data().items || [];
+            });
+            setPhotos(photosData);
+          });
+
+        const unsubscribeGeofences = db.collection('homesteads').doc('family')
+          .onSnapshot((doc) => {
+            if (doc.exists && doc.data().geofences) {
+              setGeofences(doc.data().geofences);
+            }
+          });
+
+        return () => {
+          unsubscribeTasks();
+          unsubscribePhotos();
+          unsubscribeGeofences();
+        };
+      }, []);
+
+      async function loadFromFirebase() {
+        try {
+          setIsSyncing(true);
+          
+          // Load or initialize modules
+          const modulesDoc = await db.collection('homesteads').doc('family').get();
+          if (modulesDoc.exists && modulesDoc.data().modules) {
+            setModules(modulesDoc.data().modules);
+          } else {
+            setModules(defaultModules);
+            await db.collection('homesteads').doc('family').set({
+              modules: defaultModules,
+              geofences: defaultGeofences
+            }, { merge: true });
+          }
+
+          if (modulesDoc.exists && modulesDoc.data().geofences) {
+            setGeofences(modulesDoc.data().geofences);
+          } else {
+            setGeofences(defaultGeofences);
+          }
+
+        } catch (e) {
+          console.error('Load error:', e);
+          setModules(defaultModules);
+          setGeofences(defaultGeofences);
+        } finally {
+          setIsSyncing(false);
+        }
+      }
 
       function handleURLParameters() {
         const params = new URLSearchParams(window.location.search);
@@ -250,7 +298,7 @@
 
       function checkGeofences(location) {
         geofences.forEach(geofence => {
-          if (!geofence.enabled) return;
+          if (!geofence.enabled || geofence.latitude === 0) return;
           
           const distance = calculateDistance(
             location.latitude,
@@ -284,8 +332,7 @@
         if ('Notification' in window && Notification.permission === 'granted') {
           const notification = new Notification(`${geofence.emoji} You're near ${geofence.name}!`, {
             body: reminders[0],
-            tag: `geofence-${geofence.id}`,
-            requireInteraction: false
+            tag: `geofence-${geofence.id}`
           });
 
           notification.onclick = () => {
@@ -299,71 +346,60 @@
         setActiveReminders(reminders);
       }
 
-      async function loadData() {
-        try {
-          const storedModules = await window.storage?.get('homestead-modules');
-          const storedTasks = await window.storage?.get('homestead-tasks');
-          const storedPhotos = await window.storage?.get('homestead-photos');
-          const storedGeofences = await window.storage?.get('homestead-geofences');
-          
-          if (storedModules?.value) {
-            setModules(JSON.parse(storedModules.value));
-          } else {
-            setModules(defaultModules);
-          }
-          
-          if (storedTasks?.value) setTasks(JSON.parse(storedTasks.value));
-          if (storedPhotos?.value) setPhotos(JSON.parse(storedPhotos.value));
-          
-          if (storedGeofences?.value) {
-            setGeofences(JSON.parse(storedGeofences.value));
-          } else {
-            setGeofences(defaultGeofences);
-          }
-        } catch (e) {
-          setModules(defaultModules);
-          setGeofences(defaultGeofences);
-        }
-      }
-
-      async function saveData(key, value) {
-        try {
-          await window.storage?.set(key, JSON.stringify(value));
-        } catch (e) {
-          localStorage.setItem(key, JSON.stringify(value));
-        }
-      }
-
-      function addTask(moduleId, task) {
-        const newTasks = { ...tasks };
-        if (!newTasks[moduleId]) newTasks[moduleId] = [];
-        newTasks[moduleId].push({
+      async function addTask(moduleId, taskText) {
+        const newTask = {
           id: Date.now(),
-          text: task,
+          text: taskText,
           completed: false,
           created: new Date().toISOString(),
           completedDate: null
-        });
-        setTasks(newTasks);
-        saveData('homestead-tasks', newTasks);
-      }
+        };
 
-      function toggleTask(moduleId, taskId) {
-        const newTasks = { ...tasks };
-        const task = newTasks[moduleId]?.find(t => t.id === taskId);
-        if (task) {
-          task.completed = !task.completed;
-          task.completedDate = task.completed ? new Date().toISOString() : null;
-          setTasks(newTasks);
-          saveData('homestead-tasks', newTasks);
+        const moduleTasks = tasks[moduleId] || [];
+        const updatedTasks = [...moduleTasks, newTask];
+
+        try {
+          await db.collection('homesteads').doc('family').collection('tasks').doc(moduleId).set({
+            items: updatedTasks
+          });
+        } catch (e) {
+          console.error('Error adding task:', e);
         }
       }
 
-      function deleteTask(moduleId, taskId) {
-        const newTasks = { ...tasks };
-        newTasks[moduleId] = newTasks[moduleId].filter(t => t.id !== taskId);
-        setTasks(newTasks);
-        saveData('homestead-tasks', newTasks);
+      async function toggleTask(moduleId, taskId) {
+        const moduleTasks = tasks[moduleId] || [];
+        const updatedTasks = moduleTasks.map(t => {
+          if (t.id === taskId) {
+            return {
+              ...t,
+              completed: !t.completed,
+              completedDate: !t.completed ? new Date().toISOString() : null
+            };
+          }
+          return t;
+        });
+
+        try {
+          await db.collection('homesteads').doc('family').collection('tasks').doc(moduleId).set({
+            items: updatedTasks
+          });
+        } catch (e) {
+          console.error('Error toggling task:', e);
+        }
+      }
+
+      async function deleteTask(moduleId, taskId) {
+        const moduleTasks = tasks[moduleId] || [];
+        const updatedTasks = moduleTasks.filter(t => t.id !== taskId);
+
+        try {
+          await db.collection('homesteads').doc('family').collection('tasks').doc(moduleId).set({
+            items: updatedTasks
+          });
+        } catch (e) {
+          console.error('Error deleting task:', e);
+        }
       }
 
       async function addPhoto(moduleId, file) {
@@ -377,13 +413,17 @@
             analyzed: false
           };
           
-          const newPhotos = { ...photos };
-          if (!newPhotos[moduleId]) newPhotos[moduleId] = [];
-          newPhotos[moduleId].push(photoData);
-          setPhotos(newPhotos);
-          saveData('homestead-photos', newPhotos);
-          
-          analyzePhotoWithAI(photoData, moduleId);
+          const modulePhotos = photos[moduleId] || [];
+          const updatedPhotos = [...modulePhotos, photoData];
+
+          try {
+            await db.collection('homesteads').doc('family').collection('photos').doc(moduleId).set({
+              items: updatedPhotos
+            });
+            analyzePhotoWithAI(photoData, moduleId);
+          } catch (e) {
+            console.error('Error adding photo:', e);
+          }
         };
         reader.readAsDataURL(file);
       }
@@ -410,7 +450,7 @@
                   },
                   {
                     type: 'text',
-                    text: `Analyze this image from the ${moduleId} section of a homestead. Provide: 1. What you see 2. Health/condition assessment 3. Any issues or concerns 4. Actionable recommendations 5. Best practices. Be specific and practical.`
+                    text: `Analyze this ${moduleId} image. Provide: 1. What you see 2. Health assessment 3. Issues 4. Recommendations 5. Best practices. Be specific.`
                   }
                 ]
               }]
@@ -420,14 +460,17 @@
           const data = await response.json();
           const analysis = data.content[0].text;
           
-          const newPhotos = { ...photos };
-          const photoIndex = newPhotos[moduleId].findIndex(p => p.id === photo.id);
-          if (photoIndex !== -1) {
-            newPhotos[moduleId][photoIndex].analysis = analysis;
-            newPhotos[moduleId][photoIndex].analyzed = true;
-            setPhotos(newPhotos);
-            saveData('homestead-photos', newPhotos);
-          }
+          const modulePhotos = photos[moduleId] || [];
+          const updatedPhotos = modulePhotos.map(p => {
+            if (p.id === photo.id) {
+              return { ...p, analysis, analyzed: true };
+            }
+            return p;
+          });
+
+          await db.collection('homesteads').doc('family').collection('photos').doc(moduleId).set({
+            items: updatedPhotos
+          });
           
           setAgentMessages(prev => [...prev, {
             role: 'assistant',
@@ -454,7 +497,7 @@
               model: 'claude-sonnet-4-20250514',
               max_tokens: 2000,
               messages: newMessages,
-              system: `You are an expert homestead management AI assistant. Help with sustainable agriculture, animal husbandry, beekeeping, orchard care, greenhouse management, farm stand operations, and more. Be practical and actionable.`
+              system: `You are an expert homestead management AI assistant. Help with sustainable agriculture, animal husbandry, beekeeping, orchards, greenhouses, farm stands, and more. Be practical and actionable.`
             })
           });
 
@@ -465,14 +508,14 @@
         } catch (e) {
           setAgentMessages([...newMessages, { 
             role: 'assistant', 
-            content: 'Sorry, I had trouble connecting. Make sure Claude API access is enabled.' 
+            content: 'Sorry, I had trouble connecting.' 
           }]);
         }
         
         setIsLoading(false);
       }
 
-      function setCurrentLocationAsGeofence(moduleId) {
+      async function setCurrentLocationAsGeofence(moduleId) {
         if (!currentLocation) {
           alert('Please enable location access first');
           return;
@@ -491,13 +534,19 @@
           reminders: ['Check pending tasks while you\'re here']
         };
 
-        const newGeofences = [...geofences, newGeofence];
-        setGeofences(newGeofences);
-        saveData('homestead-geofences', newGeofences);
-        alert(`Geofence created at current location for ${module.name}!`);
+        const updatedGeofences = [...geofences, newGeofence];
+        
+        try {
+          await db.collection('homesteads').doc('family').set({
+            geofences: updatedGeofences
+          }, { merge: true });
+          
+          alert(`Geofence created at current location for ${module.name}!`);
+        } catch (e) {
+          console.error('Error saving geofence:', e);
+        }
       }
 
-      // Cleanup
       useEffect(() => {
         return () => {
           if (locationWatchId.current) {
@@ -517,7 +566,8 @@
                 h('h1', { className: `text-2xl font-bold ${isDark ? 'text-orange-400' : 'text-orange-900'}`, style: { fontFamily: '"Georgia", serif' } }, 'Homestead Helper Pro'),
                 h('p', { className: `text-sm ${isDark ? 'text-slate-400' : 'text-orange-700'}` },
                   new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-                )
+                ),
+                isSyncing && h('p', { className: 'text-xs text-blue-400' }, '🔄 Syncing...')
               )
             ),
             h('div', { className: 'flex items-center gap-2' },
@@ -625,7 +675,7 @@
                 h('button', {
                   onClick: () => setCurrentLocationAsGeofence(selectedModule.id),
                   className: `px-4 py-2 rounded-lg flex items-center gap-2 ${isDark ? 'bg-green-600 text-white hover:bg-green-500' : 'bg-green-600 text-white hover:bg-green-700'}`,
-                  title: 'Set current location as geofence'
+                  title: 'Set location'
                 }, '📍 Set Location'),
                 h('button', {
                   onClick: () => fileInputRef.current?.click(),
@@ -744,7 +794,7 @@
 
             locationPermission !== 'granted' && h('div', { className: `p-4 rounded-lg mb-4 ${isDark ? 'bg-orange-900/20 border border-orange-800' : 'bg-orange-50 border border-orange-200'}` },
               h('p', { className: `text-sm ${isDark ? 'text-orange-300' : 'text-orange-900'}` },
-                '📍 Location access required - Enable location permissions to use geofencing.'
+                '📍 Enable location to use geofencing.'
               ),
               h('button', {
                 onClick: requestLocationPermission,
@@ -754,7 +804,7 @@
 
             h('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-4' },
               ...geofences.map(geofence => {
-                const distance = currentLocation ? calculateDistance(
+                const distance = currentLocation && geofence.latitude !== 0 ? calculateDistance(
                   currentLocation.latitude,
                   currentLocation.longitude,
                   geofence.latitude,
@@ -773,6 +823,9 @@
                         h('p', { className: `text-sm ${isDark ? 'text-slate-400' : 'text-orange-700'}` }, `Radius: ${geofence.radius}m`),
                         distance !== null && h('p', { className: `text-xs ${isDark ? 'text-slate-500' : 'text-orange-600'}` },
                           `Distance: ${Math.round(distance)}m away`
+                        ),
+                        geofence.latitude === 0 && h('p', { className: `text-xs ${isDark ? 'text-yellow-500' : 'text-yellow-700'}` },
+                          'Not set - visit location and click "Set Location"'
                         )
                       )
                     )
@@ -781,13 +834,16 @@
                     h('p', { className: 'font-semibold' }, 'Reminders:'),
                     ...geofence.reminders.slice(0, 2).map((reminder, i) =>
                       h('p', { key: i, className: 'text-xs' }, `• ${reminder}`)
-                    ),
-                    geofence.reminders.length > 2 && h('p', { className: 'text-xs opacity-75' },
-                      `+${geofence.reminders.length - 2} more...`
                     )
                   )
                 );
               })
+            ),
+
+            h('div', { className: `mt-4 p-4 rounded-lg ${isDark ? 'bg-blue-900/20 border border-blue-800' : 'bg-blue-50 border border-blue-200'}` },
+              h('p', { className: `text-sm ${isDark ? 'text-blue-300' : 'text-blue-900'}` },
+                '💡 Visit each location and click "Set Location" in the module view to enable geofencing. Changes sync to all family devices!'
+              )
             )
           )
         ),
@@ -809,13 +865,11 @@
             h('div', { className: 'p-4 overflow-y-auto', style: { height: '400px' } },
               agentMessages.length === 0 && h('div', { className: `text-center py-8 ${isDark ? 'text-slate-500' : 'text-orange-600'}` },
                 h('p', { className: 'mb-2' }, 'Ask me anything about your homestead!'),
-                h('p', { className: 'text-sm' }, 'I can help with:'),
                 h('ul', { className: 'text-sm mt-2 space-y-1' },
-                  h('li', null, '🌱 Crop planning & troubleshooting'),
-                  h('li', null, '🐑 Animal health & care'),
-                  h('li', null, '🐝 Beekeeping advice'),
-                  h('li', null, '🍎 Orchard management'),
-                  h('li', null, '🏪 Farm stand operations')
+                  h('li', null, '🌱 Crop planning'),
+                  h('li', null, '🐑 Animal care'),
+                  h('li', null, '🐝 Beekeeping'),
+                  h('li', null, '🏪 Farm stand tips')
                 )
               ),
               
@@ -883,7 +937,7 @@
       document.getElementById('root')
     );
 
-    // Service worker registration
+    // Service worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
