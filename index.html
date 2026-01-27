@@ -25,47 +25,64 @@
       overscroll-behavior-y: contain;
       margin: 0;
       padding: 0;
-    }
-    
-    ::-webkit-scrollbar {
-      width: 8px;
-    }
-    
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-      background: rgba(251, 146, 60, 0.3);
-      border-radius: 4px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-      background: rgba(251, 146, 60, 0.5);
-    }
-
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    
-    * {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    .chat-container {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
     
-    .animate-bounce {
-      animation: bounce 1s infinite;
+    .messages-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
     }
-
+    
+    .slide-panel {
+      position: fixed;
+      top: 0;
+      right: -100%;
+      width: 100%;
+      height: 100vh;
+      transition: right 0.3s ease;
+      z-index: 100;
+    }
+    
+    .slide-panel.open {
+      right: 0;
+    }
+    
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
-
-    .animate-pulse {
-      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    
+    .recording-indicator {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    .voice-wave {
+      display: inline-block;
+      width: 4px;
+      height: 20px;
+      margin: 0 2px;
+      background: #f97316;
+      animation: wave 1s ease-in-out infinite;
+    }
+    
+    .voice-wave:nth-child(1) { animation-delay: 0s; }
+    .voice-wave:nth-child(2) { animation-delay: 0.1s; }
+    .voice-wave:nth-child(3) { animation-delay: 0.2s; }
+    .voice-wave:nth-child(4) { animation-delay: 0.3s; }
+    .voice-wave:nth-child(5) { animation-delay: 0.4s; }
+    
+    @keyframes wave {
+      0%, 100% { height: 10px; }
+      50% { height: 30px; }
     }
   </style>
 </head>
@@ -80,1145 +97,641 @@
       projectId: "homestead-helper-fdc23",
       storageBucket: "homestead-helper-fdc23.firebasestorage.app",
       messagingSenderId: "704725515036",
-      appId: "1:704725515036:web:4dd3427e51afe507b018d9",
-      measurementId: "G-NZX2TPDB0L"
+      appId: "1:704725515036:web:4dd3427e51afe507b018d9"
     };
 
-    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // IFTTT Configuration - Replace with your webhook key
-    const IFTTT_WEBHOOK_KEY = 'YOUR_IFTTT_KEY_HERE'; // Get this from ifttt.com/maker_webhooks
-
-    // Main App
     const { useState, useEffect, useRef, createElement: h } = React;
 
     function HomesteadHelperPro() {
-      const [modules, setModules] = useState([]);
-      const [selectedModule, setSelectedModule] = useState(null);
+      const [messages, setMessages] = useState([]);
+      const [inputText, setInputText] = useState('');
+      const [isRecording, setIsRecording] = useState(false);
+      const [isAISpeaking, setIsAISpeaking] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [showOrganized, setShowOrganized] = useState(false);
       const [tasks, setTasks] = useState({});
       const [photos, setPhotos] = useState({});
-      const [showAgent, setShowAgent] = useState(false);
-      const [showGeofences, setShowGeofences] = useState(false);
-      const [showProfile, setShowProfile] = useState(false);
-      const [showWeather, setShowWeather] = useState(false);
-      const [agentInput, setAgentInput] = useState('');
-      const [agentMessages, setAgentMessages] = useState([]);
-      const [isLoading, setIsLoading] = useState(false);
-      const [isSyncing, setIsSyncing] = useState(false);
-      const [isDark, setIsDark] = useState(true);
-      const [geofences, setGeofences] = useState([]);
-      const [currentLocation, setCurrentLocation] = useState(null);
-      const [locationPermission, setLocationPermission] = useState('prompt');
-      const [activeReminders, setActiveReminders] = useState([]);
+      const [profile, setProfile] = useState(null);
       const [weather, setWeather] = useState(null);
-      const [weatherAlerts, setWeatherAlerts] = useState([]);
-      const [homesteadProfile, setHomesteadProfile] = useState(null);
+      const [currentLocation, setCurrentLocation] = useState(null);
+      const [isDark, setIsDark] = useState(true);
+      
+      const messagesEndRef = useRef(null);
+      const recognitionRef = useRef(null);
+      const speechSynthRef = useRef(null);
       const fileInputRef = useRef(null);
-      const locationWatchId = useRef(null);
 
-      // Default modules
-      const defaultModules = [
-        { id: 'garden', name: 'Garden', color: '#4ade80', emoji: '🌱' },
-        { id: 'greenhouse', name: 'Greenhouse', color: '#22d3ee', emoji: '🏡' },
-        { id: 'orchard', name: 'Fruit & Orchard', color: '#f97316', emoji: '🍎' },
-        { id: 'bees', name: 'Beekeeping', color: '#fbbf24', emoji: '🐝' },
-        { id: 'livestock', name: 'Sheep & Goats', color: '#f87171', emoji: '🐑' },
-        { id: 'birds', name: 'Birds', color: '#fcd34d', emoji: '🐓' },
-        { id: 'farmstand', name: 'Farm Stand', color: '#10b981', emoji: '🏪' },
-        { id: 'property', name: 'Property', color: '#a78bfa', emoji: '🔧' },
-        { id: 'household', name: 'Household', color: '#fb923c', emoji: '🏠' },
-      ];
-
-      const defaultGeofences = [
-        {
-          id: 'farmstand',
-          name: 'Farm Stand',
-          moduleId: 'farmstand',
-          latitude: 0,
-          longitude: 0,
-          radius: 50,
-          emoji: '🏪',
-          enabled: true,
-          reminders: [
-            'Check if anyone bought eggs and grab the cash',
-            'Replace any purchased items with fresh stock',
-            'Make sure the cash box is secure'
-          ]
-        }
+      const modules = [
+        { id: 'garden', name: 'Garden', emoji: '🌱' },
+        { id: 'greenhouse', name: 'Greenhouse', emoji: '🏡' },
+        { id: 'orchard', name: 'Fruit & Orchard', emoji: '🍎' },
+        { id: 'bees', name: 'Beekeeping', emoji: '🐝' },
+        { id: 'livestock', name: 'Sheep & Goats', emoji: '🐑' },
+        { id: 'birds', name: 'Birds', emoji: '🐓' },
+        { id: 'farmstand', name: 'Farm Stand', emoji: '🏪' },
+        { id: 'property', name: 'Property', emoji: '🔧' },
+        { id: 'household', name: 'Household', emoji: '🏠' }
       ];
 
       // Initialize
       useEffect(() => {
-        loadFromFirebase();
-        requestLocationPermission();
-        handleURLParameters();
-        loadWeather();
+        loadData();
+        initSpeechRecognition();
+        initSpeechSynthesis();
+        requestLocation();
+        
+        // Load initial greeting
+        const hasGreeted = localStorage.getItem('hasGreeted');
+        if (!hasGreeted) {
+          setTimeout(() => {
+            const greeting = "Hi! I'm your homestead assistant. Tell me what's happening on your farm today, and I'll help organize everything. You can type or use the microphone button to speak!";
+            addMessage('assistant', greeting);
+            speak(greeting);
+            localStorage.setItem('hasGreeted', 'true');
+          }, 1000);
+        }
       }, []);
 
-      // Fetch weather every hour
+      // Sync messages with Firebase
       useEffect(() => {
-        const interval = setInterval(() => {
-          loadWeather();
-        }, 60 * 60 * 1000); // Every hour
-
-        return () => clearInterval(interval);
-      }, [currentLocation]);
-
-      // Load weather data
-      async function loadWeather() {
-        if (!currentLocation) return;
-
-        try {
-          const response = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${currentLocation.latitude}&longitude=${currentLocation.longitude}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`
-          );
-          
-          const data = await response.json();
-          setWeather(data);
-          
-          // Generate smart alerts based on weather
-          generateWeatherAlerts(data);
-        } catch (e) {
-          console.error('Weather fetch failed:', e);
-        }
-      }
-
-      function generateWeatherAlerts(weatherData) {
-        const alerts = [];
-        const current = weatherData.current;
-        const daily = weatherData.daily;
-
-        // Temperature alerts
-        if (current.temperature_2m > 90) {
-          alerts.push({
-            type: 'warning',
-            icon: '🔥',
-            title: 'High Heat Alert',
-            message: 'Check livestock water levels and greenhouse ventilation',
-            priority: 'high'
+        const unsubscribe = db.collection('homesteads').doc('family').collection('messages')
+          .orderBy('timestamp', 'asc')
+          .onSnapshot((snapshot) => {
+            const msgs = [];
+            snapshot.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
+            if (msgs.length > 0) setMessages(msgs);
           });
-        }
 
-        if (current.temperature_2m < 32) {
-          alerts.push({
-            type: 'warning',
-            icon: '❄️',
-            title: 'Frost Warning',
-            message: 'Protect tender plants and check animal water for freezing',
-            priority: 'high'
-          });
-        }
+        return () => unsubscribe();
+      }, []);
 
-        // Rain alerts
-        if (current.precipitation > 0.5) {
-          alerts.push({
-            type: 'info',
-            icon: '🌧️',
-            title: 'Heavy Rain',
-            message: 'Check for drainage issues and secure equipment',
-            priority: 'medium'
-          });
-        }
-
-        // Wind alerts
-        if (current.wind_speed_10m > 25) {
-          alerts.push({
-            type: 'warning',
-            icon: '💨',
-            title: 'High Winds',
-            message: 'Secure loose items and check building structures',
-            priority: 'high'
-          });
-        }
-
-        // Tomorrow forecast
-        if (daily.temperature_2m_min[1] < 32) {
-          alerts.push({
-            type: 'info',
-            icon: '🌡️',
-            title: 'Frost Expected Tomorrow',
-            message: 'Plan to cover sensitive plants tonight',
-            priority: 'medium'
-          });
-        }
-
-        setWeatherAlerts(alerts);
-
-        // Trigger IFTTT for high priority alerts
-        alerts.forEach(alert => {
-          if (alert.priority === 'high') {
-            triggerIFTTT('weather_alert', {
-              v1: alert.title,
-              v2: alert.message,
-              v3: current.temperature_2m + '°F'
-            });
-          }
-        });
-      }
-
-      function getWeatherDescription(code) {
-        const descriptions = {
-          0: 'Clear sky',
-          1: 'Mainly clear',
-          2: 'Partly cloudy',
-          3: 'Overcast',
-          45: 'Foggy',
-          48: 'Foggy',
-          51: 'Light drizzle',
-          53: 'Moderate drizzle',
-          55: 'Dense drizzle',
-          61: 'Slight rain',
-          63: 'Moderate rain',
-          65: 'Heavy rain',
-          71: 'Slight snow',
-          73: 'Moderate snow',
-          75: 'Heavy snow',
-          80: 'Rain showers',
-          81: 'Rain showers',
-          82: 'Heavy rain showers',
-          95: 'Thunderstorm'
-        };
-        return descriptions[code] || 'Unknown';
-      }
-
-      // Real-time Firebase sync
+      // Sync tasks
       useEffect(() => {
-        const unsubscribeTasks = db.collection('homesteads').doc('family').collection('tasks')
+        const unsubscribe = db.collection('homesteads').doc('family').collection('tasks')
           .onSnapshot((snapshot) => {
             const tasksData = {};
-            snapshot.forEach((doc) => {
-              tasksData[doc.id] = doc.data().items || [];
-            });
+            snapshot.forEach(doc => tasksData[doc.id] = doc.data().items || []);
             setTasks(tasksData);
           });
 
-        const unsubscribePhotos = db.collection('homesteads').doc('family').collection('photos')
+        return () => unsubscribe();
+      }, []);
+
+      // Sync photos
+      useEffect(() => {
+        const unsubscribe = db.collection('homesteads').doc('family').collection('photos')
           .onSnapshot((snapshot) => {
             const photosData = {};
-            snapshot.forEach((doc) => {
-              photosData[doc.id] = doc.data().items || [];
-            });
+            snapshot.forEach(doc => photosData[doc.id] = doc.data().items || []);
             setPhotos(photosData);
           });
 
-        const unsubscribeMain = db.collection('homesteads').doc('family')
-          .onSnapshot((doc) => {
-            if (doc.exists) {
-              if (doc.data().geofences) setGeofences(doc.data().geofences);
-              if (doc.data().profile) setHomesteadProfile(doc.data().profile);
-            }
-          });
-
-        return () => {
-          unsubscribeTasks();
-          unsubscribePhotos();
-          unsubscribeMain();
-        };
+        return () => unsubscribe();
       }, []);
 
-      async function loadFromFirebase() {
-        try {
-          setIsSyncing(true);
-          
-          const doc = await db.collection('homesteads').doc('family').get();
+      // Load profile and weather
+      useEffect(() => {
+        db.collection('homesteads').doc('family').onSnapshot(doc => {
           if (doc.exists) {
-            const data = doc.data();
-            setModules(data.modules || defaultModules);
-            setGeofences(data.geofences || defaultGeofences);
-            setHomesteadProfile(data.profile || null);
-          } else {
-            setModules(defaultModules);
-            setGeofences(defaultGeofences);
-            await db.collection('homesteads').doc('family').set({
-              modules: defaultModules,
-              geofences: defaultGeofences
-            });
+            if (doc.data().profile) setProfile(doc.data().profile);
           }
+        });
+      }, []);
 
+      // Auto-scroll messages
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messages]);
+
+      async function loadData() {
+        try {
+          const doc = await db.collection('homesteads').doc('family').get();
+          if (doc.exists && doc.data().profile) {
+            setProfile(doc.data().profile);
+          }
         } catch (e) {
           console.error('Load error:', e);
-          setModules(defaultModules);
-          setGeofences(defaultGeofences);
-        } finally {
-          setIsSyncing(false);
         }
       }
 
-      async function saveHomesteadProfile(profile) {
-        try {
-          await db.collection('homesteads').doc('family').set({
-            profile: profile
-          }, { merge: true });
-          
-          setHomesteadProfile(profile);
-          alert('Homestead profile saved! AI will now give personalized recommendations.');
-        } catch (e) {
-          console.error('Error saving profile:', e);
-          alert('Failed to save profile. Please try again.');
-        }
-      }
-
-      function handleURLParameters() {
-        const params = new URLSearchParams(window.location.search);
-        
-        if (params.get('module')) {
-          setTimeout(() => {
-            const module = modules.find(m => m.id === params.get('module'));
-            if (module) setSelectedModule(module);
-          }, 500);
-        }
-        
-        if (params.get('cmd') === 'add' && params.get('task')) {
-          setTimeout(() => {
-            const moduleId = params.get('module') || 'household';
-            addTask(moduleId, decodeURIComponent(params.get('task')));
-          }, 500);
-        }
-        
-        if (params.get('action') === 'assistant') {
-          setShowAgent(true);
-        }
-      }
-
-      async function requestLocationPermission() {
+      async function requestLocation() {
         if (!navigator.geolocation) return;
-
-        if ('Notification' in window && Notification.permission === 'default') {
-          await Notification.requestPermission();
-        }
-
+        
         try {
           const position = await new Promise((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject);
           });
           
-          setLocationPermission('granted');
-          const newLocation = {
+          const loc = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude
           };
-          setCurrentLocation(newLocation);
-          
-          startLocationTracking();
-          loadWeather(); // Load weather once we have location
-        } catch (error) {
-          setLocationPermission('denied');
+          setCurrentLocation(loc);
+          loadWeather(loc);
+        } catch (e) {
+          console.error('Location error:', e);
         }
       }
 
-      function startLocationTracking() {
-        if (locationWatchId.current) return;
+      async function loadWeather(location) {
+        if (!location) return;
         
-        locationWatchId.current = navigator.geolocation.watchPosition(
-          (position) => {
-            const newLocation = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude
-            };
-            setCurrentLocation(newLocation);
-            checkGeofences(newLocation);
-          },
-          (error) => console.log('Location error:', error),
-          { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
-        );
-      }
-
-      function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371e3;
-        const φ1 = lat1 * Math.PI / 180;
-        const φ2 = lat2 * Math.PI / 180;
-        const Δφ = (lat2 - lat1) * Math.PI / 180;
-        const Δλ = (lon2 - lon1) * Math.PI / 180;
-
-        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                  Math.cos(φ1) * Math.cos(φ2) *
-                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-        return R * c;
-      }
-
-      function checkGeofences(location) {
-        geofences.forEach(geofence => {
-          if (!geofence.enabled || geofence.latitude === 0) return;
-          
-          const distance = calculateDistance(
-            location.latitude,
-            location.longitude,
-            geofence.latitude,
-            geofence.longitude
+        try {
+          const response = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=auto`
           );
+          const data = await response.json();
+          setWeather(data);
+        } catch (e) {
+          console.error('Weather error:', e);
+        }
+      }
 
-          if (distance <= geofence.radius) {
-            const lastReminder = localStorage.getItem(`geofence-${geofence.id}-last`);
-            const now = Date.now();
-            const cooldown = 30 * 60 * 1000;
-            
-            if (!lastReminder || (now - parseInt(lastReminder)) > cooldown) {
-              triggerGeofenceReminder(geofence);
-              localStorage.setItem(`geofence-${geofence.id}-last`, now.toString());
+      function initSpeechRecognition() {
+        if (!('webkitSpeechRecognition' in window)) return;
+        
+        const recognition = new webkitSpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        
+        recognition.onresult = (event) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+          
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript + ' ';
+            } else {
+              interimTranscript += transcript;
             }
           }
-        });
+          
+          setInputText(finalTranscript + interimTranscript);
+        };
+        
+        recognition.onerror = (event) => {
+          console.error('Speech recognition error:', event.error);
+          setIsRecording(false);
+        };
+        
+        recognition.onend = () => {
+          setIsRecording(false);
+        };
+        
+        recognitionRef.current = recognition;
       }
 
-      function triggerGeofenceReminder(geofence) {
-        const moduleTasks = tasks[geofence.moduleId] || [];
-        const pendingTasks = moduleTasks.filter(t => !t.completed);
-        
-        const reminders = [
-          ...geofence.reminders,
-          ...pendingTasks.slice(0, 3).map(t => `Task: ${t.text}`)
-        ];
-
-        // Add weather context to reminders
-        if (weather && weatherAlerts.length > 0) {
-          reminders.push(`Weather: ${weatherAlerts[0].message}`);
-        }
-
-        if ('Notification' in window && Notification.permission === 'granted') {
-          const notification = new Notification(`${geofence.emoji} You're near ${geofence.name}!`, {
-            body: reminders[0],
-            tag: `geofence-${geofence.id}`
-          });
-
-          notification.onclick = () => {
-            window.focus();
-            const module = modules.find(m => m.id === geofence.moduleId);
-            if (module) setSelectedModule(module);
-            setActiveReminders(reminders);
-          };
-        }
-
-        setActiveReminders(reminders);
-        
-        // Trigger IFTTT
-        triggerIFTTT('geofence_entered', {
-          v1: geofence.name,
-          v2: reminders[0],
-          v3: new Date().toISOString()
-        });
+      function initSpeechSynthesis() {
+        speechSynthRef.current = window.speechSynthesis;
       }
 
-      async function triggerIFTTT(eventName, values = {}) {
-        if (IFTTT_WEBHOOK_KEY === 'YOUR_IFTTT_KEY_HERE') {
-          console.log('IFTTT not configured');
+      function toggleRecording() {
+        if (!recognitionRef.current) {
+          alert('Voice recognition not supported on this device');
           return;
         }
+        
+        if (isRecording) {
+          recognitionRef.current.stop();
+          setIsRecording(false);
+        } else {
+          recognitionRef.current.start();
+          setIsRecording(true);
+        }
+      }
 
+      function speak(text) {
+        if (!speechSynthRef.current) return;
+        
+        // Cancel any ongoing speech
+        speechSynthRef.current.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+        
+        utterance.onstart = () => setIsAISpeaking(true);
+        utterance.onend = () => setIsAISpeaking(false);
+        
+        speechSynthRef.current.speak(utterance);
+      }
+
+      function stopSpeaking() {
+        if (speechSynthRef.current) {
+          speechSynthRef.current.cancel();
+          setIsAISpeaking(false);
+        }
+      }
+
+      async function addMessage(role, content, metadata = {}) {
+        const message = {
+          role,
+          content,
+          timestamp: Date.now(),
+          ...metadata
+        };
+        
         try {
-          await fetch(`https://maker.ifttt.com/trigger/${eventName}/with/key/${IFTTT_WEBHOOK_KEY}`, {
+          await db.collection('homesteads').doc('family').collection('messages').add(message);
+        } catch (e) {
+          console.error('Message save error:', e);
+          setMessages(prev => [...prev, message]);
+        }
+      }
+
+      async function sendMessage() {
+        if (!inputText.trim() && !isRecording) return;
+        
+        const userMessage = inputText.trim();
+        setInputText('');
+        
+        if (isRecording) {
+          recognitionRef.current.stop();
+          setIsRecording(false);
+        }
+        
+        if (!userMessage) return;
+        
+        // Add user message
+        await addMessage('user', userMessage);
+        
+        // Get AI response
+        setIsLoading(true);
+        await getAIResponse(userMessage);
+        setIsLoading(false);
+      }
+
+      async function getAIResponse(userMessage) {
+        try {
+          // Build context
+          let systemContext = `You are a helpful homestead assistant. You help organize tasks, track inventory, identify problems, and give advice about farming, animals, crops, and homesteading.
+
+IMPORTANT INSTRUCTIONS:
+1. Extract actionable tasks from user messages and remember them
+2. Track inventory mentions (eggs collected, feed used, etc.)
+3. Identify problems and create tasks to address them
+4. Be conversational and friendly
+5. Ask follow-up questions when needed
+6. Give practical, specific advice
+7. Keep responses concise but helpful (2-3 sentences usually)`;
+
+          if (profile) {
+            systemContext += `\n\nHomestead Profile:
+- Location: ${profile.location}
+- Zone: ${profile.zone}
+- Animals: ${profile.animals}
+- Crops: ${profile.crops}`;
+          }
+
+          if (weather) {
+            systemContext += `\n\nCurrent Weather: ${Math.round(weather.current.temperature_2m)}°F`;
+          }
+
+          // Get recent conversation history
+          const recentMessages = messages.slice(-10).map(m => ({
+            role: m.role,
+            content: m.content
+          }));
+          
+          recentMessages.push({ role: 'user', content: userMessage });
+
+          const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              value1: values.v1 || '',
-              value2: values.v2 || '',
-              value3: values.v3 || ''
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 500,
+              system: systemContext,
+              messages: recentMessages
             })
           });
-        } catch (e) {
-          console.log('IFTTT trigger failed:', e);
-        }
-      }
 
-      async function addTask(moduleId, taskText) {
-        const newTask = {
-          id: Date.now(),
-          text: taskText,
-          completed: false,
-          created: new Date().toISOString(),
-          completedDate: null
-        };
-
-        const moduleTasks = tasks[moduleId] || [];
-        const updatedTasks = [...moduleTasks, newTask];
-
-        try {
-          await db.collection('homesteads').doc('family').collection('tasks').doc(moduleId).set({
-            items: updatedTasks
-          });
+          const data = await response.json();
+          const aiResponse = data.content[0].text;
           
-          // Trigger IFTTT
-          triggerIFTTT('task_added', {
-            v1: taskText,
-            v2: moduleId,
-            v3: new Date().toISOString()
-          });
-        } catch (e) {
-          console.error('Error adding task:', e);
-        }
-      }
-
-      async function toggleTask(moduleId, taskId) {
-        const moduleTasks = tasks[moduleId] || [];
-        const task = moduleTasks.find(t => t.id === taskId);
-        const updatedTasks = moduleTasks.map(t => {
-          if (t.id === taskId) {
-            return {
-              ...t,
-              completed: !t.completed,
-              completedDate: !t.completed ? new Date().toISOString() : null
-            };
-          }
-          return t;
-        });
-
-        try {
-          await db.collection('homesteads').doc('family').collection('tasks').doc(moduleId).set({
-            items: updatedTasks
-          });
+          // Add AI message
+          await addMessage('assistant', aiResponse);
           
-          // Trigger IFTTT on completion
-          if (task && !task.completed) {
-            triggerIFTTT('task_completed', {
-              v1: task.text,
-              v2: moduleId,
-              v3: new Date().toISOString()
-            });
+          // Speak the response
+          speak(aiResponse);
+          
+          // Extract and create tasks automatically
+          await extractAndCreateTasks(userMessage, aiResponse);
+          
+        } catch (e) {
+          console.error('AI error:', e);
+          const errorMsg = "Sorry, I'm having trouble connecting. Please try again.";
+          await addMessage('assistant', errorMsg);
+          speak(errorMsg);
+        }
+      }
+
+      async function extractAndCreateTasks(userMsg, aiMsg) {
+        // Simple task extraction - look for keywords
+        const taskKeywords = ['need to', 'should', 'must', 'have to', 'fix', 'check', 'water', 'feed', 'collect', 'monitor'];
+        const combined = userMsg.toLowerCase() + ' ' + aiMsg.toLowerCase();
+        
+        // Check each module for relevant mentions
+        for (const module of modules) {
+          const moduleName = module.name.toLowerCase();
+          const moduleKeywords = [moduleName, module.id];
+          
+          // If message mentions this module and has task keywords
+          const mentionsModule = moduleKeywords.some(kw => combined.includes(kw));
+          const hasTasks = taskKeywords.some(kw => combined.includes(kw));
+          
+          if (mentionsModule && hasTasks) {
+            // Extract potential task
+            const sentences = (userMsg + ' ' + aiMsg).split(/[.!?]/);
+            for (const sentence of sentences) {
+              const lower = sentence.toLowerCase();
+              if (moduleKeywords.some(kw => lower.includes(kw)) && 
+                  taskKeywords.some(kw => lower.includes(kw))) {
+                
+                const task = {
+                  id: Date.now() + Math.random(),
+                  text: sentence.trim(),
+                  completed: false,
+                  created: new Date().toISOString(),
+                  extractedFrom: 'chat'
+                };
+                
+                const moduleTasks = tasks[module.id] || [];
+                const updatedTasks = [...moduleTasks, task];
+                
+                await db.collection('homesteads').doc('family').collection('tasks')
+                  .doc(module.id).set({ items: updatedTasks });
+                
+                break; // Only create one task per module per message
+              }
+            }
           }
-        } catch (e) {
-          console.error('Error toggling task:', e);
         }
       }
 
-      async function deleteTask(moduleId, taskId) {
-        const moduleTasks = tasks[moduleId] || [];
-        const updatedTasks = moduleTasks.filter(t => t.id !== taskId);
-
-        try {
-          await db.collection('homesteads').doc('family').collection('tasks').doc(moduleId).set({
-            items: updatedTasks
-          });
-        } catch (e) {
-          console.error('Error deleting task:', e);
-        }
-      }
-
-      async function addPhoto(moduleId, file) {
+      async function handlePhotoUpload(file) {
         const reader = new FileReader();
         reader.onload = async (e) => {
-          const photoData = {
-            id: Date.now(),
-            data: e.target.result,
-            date: new Date().toISOString(),
-            moduleId,
-            analyzed: false
-          };
+          const photoData = e.target.result;
           
-          const modulePhotos = photos[moduleId] || [];
-          const updatedPhotos = [...modulePhotos, photoData];
-
+          // Add as user message with photo
+          await addMessage('user', '[Photo uploaded]', { hasPhoto: true, photoData });
+          
+          // Analyze with AI
+          setIsLoading(true);
           try {
-            await db.collection('homesteads').doc('family').collection('photos').doc(moduleId).set({
-              items: updatedPhotos
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 800,
+                messages: [{
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'image',
+                      source: {
+                        type: 'base64',
+                        media_type: 'image/jpeg',
+                        data: photoData.split(',')[1]
+                      }
+                    },
+                    {
+                      type: 'text',
+                      text: 'Analyze this photo from my homestead. What do you see? Is there anything concerning? What should I do?'
+                    }
+                  ]
+                }]
+              })
             });
-            analyzePhotoWithAI(photoData, moduleId);
+
+            const data = await response.json();
+            const analysis = data.content[0].text;
+            
+            await addMessage('assistant', analysis, { isPhotoAnalysis: true });
+            speak(analysis);
+            
           } catch (e) {
-            console.error('Error adding photo:', e);
+            console.error('Photo analysis error:', e);
           }
+          setIsLoading(false);
         };
         reader.readAsDataURL(file);
       }
 
-      async function analyzePhotoWithAI(photo, moduleId) {
-        setIsLoading(true);
-        try {
-          const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'claude-sonnet-4-20250514',
-              max_tokens: 1000,
-              messages: [{
-                role: 'user',
-                content: [
-                  {
-                    type: 'image',
-                    source: {
-                      type: 'base64',
-                      media_type: 'image/jpeg',
-                      data: photo.data.split(',')[1]
-                    }
-                  },
-                  {
-                    type: 'text',
-                    text: `Analyze this ${moduleId} image. Provide: 1. What you see 2. Health assessment 3. Issues 4. Recommendations 5. Best practices. Be specific.`
-                  }
-                ]
-              }]
-            })
-          });
-
-          const data = await response.json();
-          const analysis = data.content[0].text;
-          
-          const modulePhotos = photos[moduleId] || [];
-          const updatedPhotos = modulePhotos.map(p => {
-            if (p.id === photo.id) {
-              return { ...p, analysis, analyzed: true };
-            }
-            return p;
-          });
-
-          await db.collection('homesteads').doc('family').collection('photos').doc(moduleId).set({
-            items: updatedPhotos
-          });
-          
-          setAgentMessages(prev => [...prev, {
-            role: 'assistant',
-            content: `📸 Photo Analysis:\n\n${analysis}`
-          }]);
-          
-          // Trigger IFTTT
-          triggerIFTTT('photo_analyzed', {
-            v1: moduleId,
-            v2: 'Analysis complete',
-            v3: new Date().toISOString()
-          });
-          
-        } catch (e) {
-          console.log('Photo analysis failed', e);
-        }
-        setIsLoading(false);
-      }
-
-      async function sendToAgent(message) {
-        setIsLoading(true);
-        const newMessages = [...agentMessages, { role: 'user', content: message }];
-        setAgentMessages(newMessages);
-        setAgentInput('');
-
-        // Build context with weather and profile
-        let systemContext = `You are an expert homestead management AI assistant. Help with sustainable agriculture, animal husbandry, beekeeping, orchards, greenhouses, farm stands, and more. Be practical and actionable.`;
-
-        if (homesteadProfile) {
-          systemContext += `\n\nHomestead Profile:
-- Location: ${homesteadProfile.location || 'Not specified'}
-- USDA Zone: ${homesteadProfile.zone || 'Not specified'}
-- Property Size: ${homesteadProfile.size || 'Not specified'}
-- Animals: ${homesteadProfile.animals || 'Not specified'}
-- Crops: ${homesteadProfile.crops || 'Not specified'}
-- Goals: ${homesteadProfile.goals || 'Not specified'}`;
-        }
-
-        if (weather) {
-          const current = weather.current;
-          systemContext += `\n\nCurrent Weather:
-- Temperature: ${current.temperature_2m}°F
-- Conditions: ${getWeatherDescription(current.weather_code)}
-- Humidity: ${current.relative_humidity_2m}%
-- Wind: ${current.wind_speed_10m} mph`;
-          
-          if (weatherAlerts.length > 0) {
-            systemContext += `\n- Active Alerts: ${weatherAlerts.map(a => a.title).join(', ')}`;
-          }
-        }
-
-        try {
-          const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'claude-sonnet-4-20250514',
-              max_tokens: 2000,
-              messages: newMessages,
-              system: systemContext
-            })
-          });
-
-          const data = await response.json();
-          const assistantMessage = data.content[0].text;
-          
-          setAgentMessages([...newMessages, { role: 'assistant', content: assistantMessage }]);
-        } catch (e) {
-          setAgentMessages([...newMessages, { 
-            role: 'assistant', 
-            content: 'Sorry, I had trouble connecting.' 
-          }]);
-        }
-        
-        setIsLoading(false);
-      }
-
-      async function setCurrentLocationAsGeofence(moduleId) {
-        if (!currentLocation) {
-          alert('Please enable location access first');
-          return;
-        }
-
-        const module = modules.find(m => m.id === moduleId);
-        const newGeofence = {
-          id: `custom-${Date.now()}`,
-          name: `${module.name} Location`,
-          moduleId: moduleId,
-          latitude: currentLocation.latitude,
-          longitude: currentLocation.longitude,
-          radius: 50,
-          emoji: module.emoji,
-          enabled: true,
-          reminders: ['Check pending tasks while you\'re here']
-        };
-
-        const updatedGeofences = [...geofences, newGeofence];
-        
-        try {
-          await db.collection('homesteads').doc('family').set({
-            geofences: updatedGeofences
-          }, { merge: true });
-          
-          alert(`Geofence created at current location for ${module.name}!`);
-        } catch (e) {
-          console.error('Error saving geofence:', e);
-        }
-      }
-
-      useEffect(() => {
-        return () => {
-          if (locationWatchId.current) {
-            navigator.geolocation.clearWatch(locationWatchId.current);
-          }
-        };
-      }, []);
-
       // Render
-      return h('div', { className: `min-h-screen transition-colors duration-300 ${isDark ? 'bg-slate-950' : 'bg-orange-50'}` },
+      return h('div', { className: `chat-container ${isDark ? 'bg-slate-950' : 'bg-orange-50'}` },
         // Header
-        h('header', { className: `border-b backdrop-blur-sm sticky top-0 z-50 ${isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-orange-100/80 border-orange-200'}` },
-          h('div', { className: 'max-w-7xl mx-auto px-4 py-4 flex items-center justify-between' },
+        h('header', { className: `p-4 border-b ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-orange-200'}` },
+          h('div', { className: 'flex items-center justify-between' },
             h('div', { className: 'flex items-center gap-3' },
-              h('div', { className: 'text-3xl' }, '🏡'),
+              h('div', { className: 'text-2xl' }, '🏡'),
               h('div', null,
-                h('h1', { className: `text-2xl font-bold ${isDark ? 'text-orange-400' : 'text-orange-900'}`, style: { fontFamily: '"Georgia", serif' } }, 'Homestead Helper Pro'),
-                h('p', { className: `text-sm ${isDark ? 'text-slate-400' : 'text-orange-700'}` },
-                  weather ? `${Math.round(weather.current.temperature_2m)}°F • ${getWeatherDescription(weather.current.weather_code)}` : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-                ),
-                isSyncing && h('p', { className: 'text-xs text-blue-400' }, '🔄 Syncing...')
+                h('h1', { className: `text-lg font-bold ${isDark ? 'text-orange-400' : 'text-orange-900'}` }, 'Homestead Helper'),
+                weather && h('p', { className: `text-xs ${isDark ? 'text-slate-400' : 'text-orange-700'}` },
+                  `${Math.round(weather.current.temperature_2m)}°F`
+                )
               )
             ),
             h('div', { className: 'flex items-center gap-2' },
-              weatherAlerts.length > 0 && h('div', { className: 'relative' },
-                h('button', {
-                  className: `p-2 rounded-full animate-pulse ${isDark ? 'bg-red-600 text-white' : 'bg-red-600 text-white'}`,
-                  onClick: () => setShowWeather(true),
-                  title: 'Weather alerts'
-                }, weatherAlerts[0].icon),
-                h('span', { className: 'absolute -top-1 -right-1 bg-yellow-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center' },
-                  weatherAlerts.length
-                )
-              ),
-              activeReminders.length > 0 && h('div', { className: 'relative' },
-                h('button', {
-                  className: `p-2 rounded-full animate-pulse ${isDark ? 'bg-orange-600 text-white' : 'bg-orange-600 text-white'}`,
-                  onClick: () => setActiveReminders([])
-                }, '🔔'),
-                h('span', { className: 'absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center' },
-                  activeReminders.length
-                )
-              ),
               h('button', {
-                onClick: () => setShowProfile(true),
-                className: `p-2 rounded-full transition-all hover:scale-110 ${isDark ? 'bg-slate-800 text-purple-400' : 'bg-white text-purple-600'}`,
-                title: homesteadProfile ? 'Edit Profile' : 'Setup Profile'
-              }, homesteadProfile ? '⚙️' : '✨'),
-              h('button', {
-                onClick: () => setShowGeofences(!showGeofences),
-                className: `p-2 rounded-full transition-all hover:scale-110 ${isDark ? 'bg-slate-800 text-green-400' : 'bg-white text-green-600'}`,
-                title: 'Geofencing'
-              }, '📍'),
-              h('button', {
-                onClick: () => setShowAgent(!showAgent),
-                className: `p-2 rounded-full transition-all hover:scale-110 ${isDark ? 'bg-orange-600 text-white' : 'bg-orange-600 text-white'}`,
-                title: 'AI Assistant'
-              }, '🤖'),
+                onClick: () => setShowOrganized(true),
+                className: `p-2 rounded-lg ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-orange-200 text-orange-900'}`,
+                title: 'View Organized'
+              }, '📊'),
               h('button', {
                 onClick: () => setIsDark(!isDark),
-                className: `p-2 rounded-full transition-all hover:scale-110 ${isDark ? 'bg-slate-800 text-yellow-400' : 'bg-white text-orange-600'}`
+                className: `p-2 rounded-lg ${isDark ? 'bg-slate-800 text-yellow-400' : 'bg-orange-200 text-orange-900'}`
               }, isDark ? '☀️' : '🌙')
             )
           )
         ),
 
-        // Weather Alerts Banner
-        weatherAlerts.length > 0 && h('div', { className: `border-b ${isDark ? 'bg-red-900/30 border-red-800' : 'bg-red-200 border-red-300'}` },
-          h('div', { className: 'max-w-7xl mx-auto px-4 py-3' },
-            h('div', { className: 'flex items-start justify-between' },
-              h('div', null,
-                h('p', { className: `font-bold mb-2 ${isDark ? 'text-red-300' : 'text-red-900'}` },
-                  `${weatherAlerts[0].icon} ${weatherAlerts[0].title}`
-                ),
-                h('p', { className: `text-sm ${isDark ? 'text-red-200' : 'text-red-800'}` },
-                  weatherAlerts[0].message
-                ),
-                weatherAlerts.length > 1 && h('p', { className: `text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-700'}` },
-                  `+${weatherAlerts.length - 1} more alerts`
-                )
-              ),
-              h('button', {
-                onClick: () => setShowWeather(true),
-                className: `px-3 py-1 rounded-lg text-sm ${isDark ? 'bg-red-800 text-red-100' : 'bg-red-300 text-red-900'}`
-              }, 'View All')
-            )
-          )
-        ),
-
-        // Active Reminders Banner
-        activeReminders.length > 0 && h('div', { className: `border-b ${isDark ? 'bg-orange-900/30 border-orange-800' : 'bg-orange-200 border-orange-300'}` },
-          h('div', { className: 'max-w-7xl mx-auto px-4 py-3' },
-            h('div', { className: 'flex items-start justify-between' },
-              h('div', null,
-                h('p', { className: `font-bold mb-2 ${isDark ? 'text-orange-300' : 'text-orange-900'}` },
-                  '📍 You\'re near a location! Here\'s what to check:'
-                ),
-                h('ul', { className: `text-sm space-y-1 ${isDark ? 'text-orange-200' : 'text-orange-800'}` },
-                  ...activeReminders.slice(0, 4).map((reminder, i) =>
-                    h('li', { key: i }, `• ${reminder}`)
-                  )
-                )
-              ),
-              h('button', {
-                onClick: () => setActiveReminders([]),
-                className: `p-2 rounded-lg ${isDark ? 'hover:bg-orange-800' : 'hover:bg-orange-300'}`
-              }, '✕')
-            )
-          )
-        ),
-
-        // Main Content - Module Grid (continues...)
-        h('main', { className: 'max-w-7xl mx-auto px-4 py-8' },
-          !homesteadProfile && h('div', { className: `p-6 rounded-2xl mb-8 ${isDark ? 'bg-gradient-to-r from-purple-900/30 to-blue-900/30 border-2 border-purple-800' : 'bg-gradient-to-r from-purple-100 to-blue-100 border-2 border-purple-300'}` },
-            h('div', { className: 'flex items-start justify-between' },
-              h('div', null,
-                h('h3', { className: `text-xl font-bold mb-2 ${isDark ? 'text-purple-300' : 'text-purple-900'}` },
-                  '✨ Get Smarter Recommendations!'
-                ),
-                h('p', { className: `text-sm mb-3 ${isDark ? 'text-purple-200' : 'text-purple-800'}` },
-                  'Tell AI about your homestead to get personalized advice based on your location, animals, crops, and weather.'
-                ),
-                h('button', {
-                  onClick: () => setShowProfile(true),
-                  className: 'px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500'
-                }, 'Setup Your Profile (2 minutes)')
-              ),
-              h('div', { className: 'text-5xl' }, '🌟')
-            )
-          ),
-
-          // Module Grid (keeping existing module rendering code...)
-          h('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8' },
-            ...modules.map(module => {
-              const moduleTasks = tasks[module.id] || [];
-              const modulePhotos = photos[module.id] || [];
-              const completedCount = moduleTasks.filter(t => t.completed).length;
-              const pendingCount = moduleTasks.length - completedCount;
-              
-              return h('div', {
-                key: module.id,
-                onClick: () => setSelectedModule(module),
-                className: `p-6 rounded-2xl cursor-pointer transition-all hover:scale-105 hover:shadow-2xl ${
-                  isDark ? 'bg-slate-900 border-2 border-slate-800' : 'bg-white border-2 border-orange-200'
-                } ${selectedModule?.id === module.id ? 'ring-4 ring-orange-400 ring-opacity-50' : ''}`,
-                style: {
-                  background: isDark 
-                    ? 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)'
-                    : 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(254, 243, 199, 0.5) 100%)'
-                }
-              },
-                h('div', { className: 'flex items-start justify-between mb-3' },
-                  h('div', { className: `p-3 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-orange-100'}`, style: { color: module.color } }, '●'),
-                  h('div', { className: 'text-2xl' }, module.emoji)
-                ),
-                h('h3', { className: `text-lg font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}`, style: { fontFamily: '"Georgia", serif' } },
-                  module.name
-                ),
-                h('div', { className: 'flex flex-col gap-1 text-sm' },
-                  h('div', { className: isDark ? 'text-slate-400' : 'text-orange-700' },
-                    h('span', { className: 'font-semibold text-orange-400' }, pendingCount), ' pending • ',
-                    h('span', { className: 'font-semibold text-green-400' }, completedCount), ' done'
-                  ),
-                  h('div', { className: isDark ? 'text-slate-500' : 'text-orange-600' },
-                    `📸 ${modulePhotos.length} photos`
-                  )
-                )
-              );
-            })
-          ),
-
-          // Continue with rest of UI... (selectedModule detail, geofences, etc.)
-          // (The rest of the UI code continues as before with tasks, photos, geofences, etc.)
-          // For brevity, I'll add the key new panels below
-        ),
-
-        // Homestead Profile Panel
-        showProfile && h('div', { className: 'fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4' },
-          h('div', { className: `w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl ${isDark ? 'bg-slate-900' : 'bg-white'}` },
-            h('div', { className: `p-6 border-b ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-purple-100 border-purple-200'}` },
-              h('div', { className: 'flex items-center justify-between' },
-                h('h2', { className: `text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}` }, '✨ Homestead Profile'),
-                h('button', {
-                  onClick: () => setShowProfile(false),
-                  className: `px-3 py-1 rounded-lg ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-purple-200 text-purple-900'}`
-                }, 'Close')
-              )
-            ),
-            h('form', {
-              className: 'p-6 space-y-4',
-              onSubmit: (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const profile = {
-                  location: formData.get('location'),
-                  zone: formData.get('zone'),
-                  size: formData.get('size'),
-                  animals: formData.get('animals'),
-                  crops: formData.get('crops'),
-                  goals: formData.get('goals')
-                };
-                saveHomesteadProfile(profile);
-                setShowProfile(false);
-              }
+        // Messages
+        h('div', { className: 'messages-container' },
+          messages.map((msg, i) =>
+            h('div', {
+              key: msg.id || i,
+              className: `mb-4 ${msg.role === 'user' ? 'text-right' : 'text-left'}`
             },
-              h('div', null,
-                h('label', { className: `block text-sm font-semibold mb-2 ${isDark ? 'text-slate-200' : 'text-slate-900'}` }, 'Location (City, State)'),
-                h('input', {
-                  type: 'text',
-                  name: 'location',
-                  placeholder: 'e.g., Asheville, NC',
-                  defaultValue: homesteadProfile?.location || '',
-                  className: `w-full px-4 py-2 rounded-lg border-2 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-purple-200 text-slate-900'}`
-                })
-              ),
-              h('div', null,
-                h('label', { className: `block text-sm font-semibold mb-2 ${isDark ? 'text-slate-200' : 'text-slate-900'}` }, 'USDA Hardiness Zone'),
-                h('input', {
-                  type: 'text',
-                  name: 'zone',
-                  placeholder: 'e.g., 7a',
-                  defaultValue: homesteadProfile?.zone || '',
-                  className: `w-full px-4 py-2 rounded-lg border-2 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-purple-200 text-slate-900'}`
-                })
-              ),
-              h('div', null,
-                h('label', { className: `block text-sm font-semibold mb-2 ${isDark ? 'text-slate-200' : 'text-slate-900'}` }, 'Property Size'),
-                h('input', {
-                  type: 'text',
-                  name: 'size',
-                  placeholder: 'e.g., 5 acres',
-                  defaultValue: homesteadProfile?.size || '',
-                  className: `w-full px-4 py-2 rounded-lg border-2 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-purple-200 text-slate-900'}`
-                })
-              ),
-              h('div', null,
-                h('label', { className: `block text-sm font-semibold mb-2 ${isDark ? 'text-slate-200' : 'text-slate-900'}` }, 'Animals'),
-                h('textarea', {
-                  name: 'animals',
-                  placeholder: 'e.g., 6 chickens, 2 goats, 3 sheep, 2 bee hives',
-                  defaultValue: homesteadProfile?.animals || '',
-                  rows: 2,
-                  className: `w-full px-4 py-2 rounded-lg border-2 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-purple-200 text-slate-900'}`
-                })
-              ),
-              h('div', null,
-                h('label', { className: `block text-sm font-semibold mb-2 ${isDark ? 'text-slate-200' : 'text-slate-900'}` }, 'Crops / Garden'),
-                h('textarea', {
-                  name: 'crops',
-                  placeholder: 'e.g., Tomatoes, peppers, herbs, apple trees, blueberries',
-                  defaultValue: homesteadProfile?.crops || '',
-                  rows: 2,
-                  className: `w-full px-4 py-2 rounded-lg border-2 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-purple-200 text-slate-900'}`
-                })
-              ),
-              h('div', null,
-                h('label', { className: `block text-sm font-semibold mb-2 ${isDark ? 'text-slate-200' : 'text-slate-900'}` }, 'Goals'),
-                h('textarea', {
-                  name: 'goals',
-                  placeholder: 'e.g., Become more self-sufficient, sell at farmers market, organic practices',
-                  defaultValue: homesteadProfile?.goals || '',
-                  rows: 2,
-                  className: `w-full px-4 py-2 rounded-lg border-2 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-purple-200 text-slate-900'}`
-                })
-              ),
-              h('button', {
-                type: 'submit',
-                className: 'w-full px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-500'
-              }, 'Save Profile')
-            )
-          )
-        ),
-
-        // Weather Details Panel
-        showWeather && weather && h('div', { className: 'fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4' },
-          h('div', { className: `w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl ${isDark ? 'bg-slate-900' : 'bg-white'}` },
-            h('div', { className: `p-6 border-b ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-blue-100 border-blue-200'}` },
-              h('div', { className: 'flex items-center justify-between' },
-                h('h2', { className: `text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}` }, '🌤️ Weather & Alerts'),
-                h('button', {
-                  onClick: () => setShowWeather(false),
-                  className: `px-3 py-1 rounded-lg ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-blue-200 text-blue-900'}`
-                }, 'Close')
-              )
-            ),
-            h('div', { className: 'p-6 space-y-4' },
-              h('div', { className: `p-4 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-blue-50'}` },
-                h('h3', { className: `text-lg font-bold mb-2 ${isDark ? 'text-white' : 'text-slate-900'}` }, 'Current Conditions'),
-                h('div', { className: 'grid grid-cols-2 gap-4 text-sm' },
-                  h('div', null,
-                    h('p', { className: isDark ? 'text-slate-400' : 'text-slate-600' }, 'Temperature'),
-                    h('p', { className: `text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}` }, `${Math.round(weather.current.temperature_2m)}°F`)
-                  ),
-                  h('div', null,
-                    h('p', { className: isDark ? 'text-slate-400' : 'text-slate-600' }, 'Conditions'),
-                    h('p', { className: `font-semibold ${isDark ? 'text-white' : 'text-slate-900'}` }, getWeatherDescription(weather.current.weather_code))
-                  ),
-                  h('div', null,
-                    h('p', { className: isDark ? 'text-slate-400' : 'text-slate-600' }, 'Humidity'),
-                    h('p', { className: `font-semibold ${isDark ? 'text-white' : 'text-slate-900'}` }, `${weather.current.relative_humidity_2m}%`)
-                  ),
-                  h('div', null,
-                    h('p', { className: isDark ? 'text-slate-400' : 'text-slate-600' }, 'Wind'),
-                    h('p', { className: `font-semibold ${isDark ? 'text-white' : 'text-slate-900'}` }, `${weather.current.wind_speed_10m} mph`)
-                  )
-                )
-              ),
-              weatherAlerts.length > 0 && h('div', null,
-                h('h3', { className: `text-lg font-bold mb-3 ${isDark ? 'text-white' : 'text-slate-900'}` }, 'Active Alerts'),
-                h('div', { className: 'space-y-2' },
-                  ...weatherAlerts.map((alert, i) =>
-                    h('div', {
-                      key: i,
-                      className: `p-4 rounded-xl ${
-                        alert.priority === 'high' 
-                          ? isDark ? 'bg-red-900/30 border-2 border-red-800' : 'bg-red-100 border-2 border-red-300'
-                          : isDark ? 'bg-blue-900/30 border-2 border-blue-800' : 'bg-blue-100 border-2 border-blue-300'
-                      }`
-                    },
-                      h('div', { className: 'flex items-start gap-3' },
-                        h('span', { className: 'text-2xl' }, alert.icon),
-                        h('div', null,
-                          h('h4', { className: `font-bold ${isDark ? 'text-white' : 'text-slate-900'}` }, alert.title),
-                          h('p', { className: `text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}` }, alert.message)
-                        )
-                      )
-                    )
-                  )
-                )
-              ),
-              h('div', { className: `p-4 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-blue-50'}` },
-                h('h3', { className: `text-lg font-bold mb-3 ${isDark ? 'text-white' : 'text-slate-900'}` }, '7-Day Forecast'),
-                h('div', { className: 'space-y-2' },
-                  ...weather.daily.time.slice(0, 7).map((date, i) =>
-                    h('div', {
-                      key: i,
-                      className: `flex items-center justify-between p-2 rounded ${isDark ? 'hover:bg-slate-700' : 'hover:bg-blue-100'}`
-                    },
-                      h('span', { className: `text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}` },
-                        new Date(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-                      ),
-                      h('span', { className: `text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}` },
-                        getWeatherDescription(weather.daily.weather_code[i])
-                      ),
-                      h('span', { className: `font-semibold ${isDark ? 'text-white' : 'text-slate-900'}` },
-                        `${Math.round(weather.daily.temperature_2m_max[i])}° / ${Math.round(weather.daily.temperature_2m_min[i])}°`
-                      )
-                    )
-                  )
-                )
-              )
-            )
-          )
-        ),
-
-        // AI Agent (enhanced with weather/profile context - keeping existing agent UI)
-        showAgent && h('div', { className: 'fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-4' },
-          h('div', { className: `w-full max-w-2xl rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl ${isDark ? 'bg-slate-900' : 'bg-white'}`, style: { maxHeight: '80vh' } },
-            h('div', { className: `p-4 border-b flex items-center justify-between ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-orange-100 border-orange-200'}` },
-              h('div', { className: 'flex items-center gap-2' },
-                h('span', null, '🤖'),
-                h('div', null,
-                  h('h3', { className: `font-bold ${isDark ? 'text-white' : 'text-slate-900'}` }, 'AI Homestead Assistant'),
-                  (homesteadProfile || weather) && h('p', { className: `text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}` },
-                    homesteadProfile && weather ? 'Personalized • Weather-Aware' :
-                    homesteadProfile ? 'Personalized Advice' : 'Weather-Aware'
-                  )
-                )
-              ),
-              h('button', {
-                onClick: () => setShowAgent(false),
-                className: `px-3 py-1 rounded-lg ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-orange-200 text-orange-900'}`
-              }, 'Close')
-            ),
-            
-            h('div', { className: 'p-4 overflow-y-auto', style: { height: '400px' } },
-              agentMessages.length === 0 && h('div', { className: `text-center py-8 ${isDark ? 'text-slate-500' : 'text-orange-600'}` },
-                h('p', { className: 'text-4xl mb-4' }, '🤖'),
-                h('p', { className: 'mb-2 font-semibold' }, 'Your Smart Homestead Assistant'),
-                h('p', { className: 'text-sm mb-4' },
-                  homesteadProfile && weather ? 'I know your location, animals, crops, and current weather!' :
-                  homesteadProfile ? 'I know about your homestead!' :
-                  weather ? 'I can see your current weather!' :
-                  'Ask me anything about your homestead!'
+              h('div', {
+                className: `inline-block max-w-[85%] p-3 rounded-2xl ${
+                  msg.role === 'user'
+                    ? 'bg-orange-600 text-white'
+                    : isDark ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-900 shadow'
+                }`
+              },
+                msg.hasPhoto && h('div', { className: 'mb-2' },
+                  h('img', { src: msg.photoData, className: 'max-w-full rounded-lg', alt: 'Photo' })
                 ),
-                h('ul', { className: 'text-sm space-y-2' },
-                  h('li', null, '🌱 "What should I plant this week?"'),
-                  h('li', null, '🐓 "My chickens stopped laying, why?"'),
-                  h('li', null, '🐝 "When should I check my hives?"'),
-                  h('li', null, '🌤️ "How will this weather affect my crops?"'),
-                  homesteadProfile && h('li', null, `🏡 "Best crops for zone ${homesteadProfile.zone}?"`)
-                )
+                h('p', { className: 'whitespace-pre-wrap' }, msg.content),
+                msg.isPhotoAnalysis && h('span', { className: 'text-xs opacity-75' }, ' 📸')
               ),
-              
-              ...agentMessages.map((msg, i) =>
-                h('div', { key: i, className: `mb-4 ${msg.role === 'user' ? 'text-right' : 'text-left'}` },
-                  h('div', {
-                    className: `inline-block max-w-[80%] p-3 rounded-2xl whitespace-pre-wrap ${
-                      msg.role === 'user'
-                        ? 'bg-orange-600 text-white'
-                        : isDark ? 'bg-slate-800 text-slate-200' : 'bg-orange-50 text-slate-900'
-                    }`
-                  }, msg.content)
-                )
-              ),
-              
-              isLoading && h('div', { className: 'text-left mb-4' },
-                h('div', { className: `inline-block p-3 rounded-2xl ${isDark ? 'bg-slate-800' : 'bg-orange-50'}` },
-                  h('div', { className: 'flex gap-2' },
-                    h('div', { className: 'w-2 h-2 bg-orange-400 rounded-full animate-bounce' }),
-                    h('div', { className: 'w-2 h-2 bg-orange-400 rounded-full animate-bounce', style: { animationDelay: '0.1s' } }),
-                    h('div', { className: 'w-2 h-2 bg-orange-400 rounded-full animate-bounce', style: { animationDelay: '0.2s' } })
-                  )
-                )
+              msg.role === 'assistant' && i === messages.length - 1 && isAISpeaking &&
+                h('div', { className: 'mt-1 text-xs text-orange-400' }, '🔊 Speaking...')
+            )
+          ),
+          
+          isLoading && h('div', { className: 'text-left mb-4' },
+            h('div', { className: `inline-block p-3 rounded-2xl ${isDark ? 'bg-slate-800' : 'bg-white shadow'}` },
+              h('div', { className: 'flex gap-1' },
+                h('span', { className: 'voice-wave' }),
+                h('span', { className: 'voice-wave' }),
+                h('span', { className: 'voice-wave' }),
+                h('span', { className: 'voice-wave' }),
+                h('span', { className: 'voice-wave' })
               )
+            )
+          ),
+          
+          h('div', { ref: messagesEndRef })
+        ),
+
+        // Input Area
+        h('div', { className: `p-4 border-t ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-orange-200'}` },
+          isRecording && h('div', { className: 'mb-2 text-center' },
+            h('div', { className: `inline-flex items-center gap-2 px-3 py-1 rounded-full ${isDark ? 'bg-red-900/50' : 'bg-red-100'}` },
+              h('div', { className: `w-2 h-2 rounded-full bg-red-500 recording-indicator` }),
+              h('span', { className: `text-sm ${isDark ? 'text-red-300' : 'text-red-700'}` }, 'Recording...')
+            )
+          ),
+          
+          h('div', { className: 'flex items-end gap-2' },
+            h('button', {
+              onClick: () => fileInputRef.current?.click(),
+              className: `p-3 rounded-full ${isDark ? 'bg-slate-800 text-blue-400' : 'bg-blue-100 text-blue-600'}`,
+              title: 'Upload photo'
+            }, '📷'),
+            
+            h('input', {
+              ref: fileInputRef,
+              type: 'file',
+              accept: 'image/*',
+              capture: 'environment',
+              className: 'hidden',
+              onChange: (e) => {
+                if (e.target.files?.[0]) {
+                  handlePhotoUpload(e.target.files[0]);
+                  e.target.value = '';
+                }
+              }
+            }),
+            
+            h('div', { className: 'flex-1' },
+              h('textarea', {
+                value: inputText,
+                onChange: (e) => setInputText(e.target.value),
+                onKeyPress: (e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                },
+                placeholder: isRecording ? 'Listening...' : 'Type or speak...',
+                rows: 1,
+                className: `w-full px-4 py-3 rounded-2xl resize-none ${
+                  isDark 
+                    ? 'bg-slate-800 text-white placeholder-slate-500 border-2 border-slate-700' 
+                    : 'bg-gray-100 text-slate-900 placeholder-slate-400 border-2 border-gray-200'
+                }`,
+                disabled: isRecording
+              })
             ),
             
-            h('div', { className: `p-4 border-t ${isDark ? 'border-slate-700' : 'border-orange-200'}` },
-              h('div', { className: 'flex gap-2' },
-                h('input', {
-                  type: 'text',
-                  value: agentInput,
-                  onChange: (e) => setAgentInput(e.target.value),
-                  onKeyPress: (e) => {
-                    if (e.key === 'Enter' && agentInput.trim() && !isLoading) {
-                      sendToAgent(agentInput);
-                    }
-                  },
-                  placeholder: 'Ask about your homestead...',
-                  className: `flex-1 px-4 py-3 rounded-xl border-2 outline-none transition-all ${
-                    isDark 
-                      ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500 focus:border-orange-500' 
-                      : 'bg-white border-orange-200 text-slate-900 placeholder-orange-400 focus:border-orange-500'
-                  }`,
-                  disabled: isLoading
-                }),
-                h('button', {
-                  onClick: () => agentInput.trim() && sendToAgent(agentInput),
-                  disabled: !agentInput.trim() || isLoading,
-                  className: `px-6 py-3 rounded-xl font-medium transition-all ${
-                    agentInput.trim() && !isLoading
-                      ? 'bg-orange-600 text-white hover:bg-orange-500'
-                      : isDark ? 'bg-slate-800 text-slate-600' : 'bg-orange-100 text-orange-300'
-                  }`
-                }, 'Send')
+            h('button', {
+              onClick: toggleRecording,
+              className: `p-3 rounded-full transition-all ${
+                isRecording 
+                  ? 'bg-red-600 text-white animate-pulse'
+                  : isDark ? 'bg-slate-800 text-orange-400' : 'bg-orange-200 text-orange-900'
+              }`,
+              title: isRecording ? 'Stop recording' : 'Start recording'
+            }, isRecording ? '⏹️' : '🎤'),
+            
+            h('button', {
+              onClick: sendMessage,
+              disabled: !inputText.trim() || isLoading,
+              className: `p-3 rounded-full transition-all ${
+                inputText.trim() && !isLoading
+                  ? 'bg-orange-600 text-white hover:bg-orange-500'
+                  : isDark ? 'bg-slate-800 text-slate-600' : 'bg-gray-200 text-gray-400'
+              }`
+            }, '➤')
+          ),
+          
+          isAISpeaking && h('button', {
+            onClick: stopSpeaking,
+            className: 'mt-2 w-full py-2 bg-orange-600 text-white rounded-lg text-sm'
+          }, '🔇 Stop Speaking')
+        ),
+
+        // Organized View Panel (Slide from right)
+        h('div', { className: `slide-panel ${showOrganized ? 'open' : ''} ${isDark ? 'bg-slate-950' : 'bg-orange-50'}` },
+          h('div', { className: `h-full flex flex-col border-l ${isDark ? 'border-slate-800' : 'border-orange-200'}` },
+            h('div', { className: `p-4 border-b flex items-center justify-between ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-orange-200'}` },
+              h('h2', { className: `text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}` }, '📊 Organized View'),
+              h('button', {
+                onClick: () => setShowOrganized(false),
+                className: `px-3 py-1 rounded-lg ${isDark ? 'bg-slate-800 text-slate-300' : 'bg-orange-200 text-orange-900'}`
+              }, '✕')
+            ),
+            
+            h('div', { className: 'flex-1 overflow-y-auto p-4' },
+              // Tasks by Module
+              h('div', { className: 'mb-6' },
+                h('h3', { className: `text-lg font-semibold mb-3 ${isDark ? 'text-white' : 'text-slate-900'}` }, 'Tasks by Module'),
+                h('div', { className: 'space-y-3' },
+                  ...modules.map(module => {
+                    const moduleTasks = tasks[module.id] || [];
+                    const pending = moduleTasks.filter(t => !t.completed);
+                    if (pending.length === 0) return null;
+                    
+                    return h('div', {
+                      key: module.id,
+                      className: `p-4 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-white shadow'}`
+                    },
+                      h('div', { className: 'flex items-center gap-2 mb-2' },
+                        h('span', { className: 'text-xl' }, module.emoji),
+                        h('h4', { className: `font-semibold ${isDark ? 'text-white' : 'text-slate-900'}` }, module.name),
+                        h('span', { className: `ml-auto px-2 py-1 rounded text-xs ${isDark ? 'bg-orange-900/30 text-orange-300' : 'bg-orange-100 text-orange-700'}` },
+                          pending.length
+                        )
+                      ),
+                      h('ul', { className: 'space-y-1' },
+                        ...pending.slice(0, 3).map(task =>
+                          h('li', {
+                            key: task.id,
+                            className: `text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`
+                          }, `• ${task.text}`)
+                        )
+                      ),
+                      pending.length > 3 && h('p', { className: `text-xs mt-2 ${isDark ? 'text-slate-500' : 'text-slate-500'}` },
+                        `+${pending.length - 3} more tasks`
+                      )
+                    );
+                  }).filter(Boolean)
+                )
+              ),
+              
+              // Recent Photos
+              Object.keys(photos).length > 0 && h('div', null,
+                h('h3', { className: `text-lg font-semibold mb-3 ${isDark ? 'text-white' : 'text-slate-900'}` }, 'Recent Photos'),
+                h('div', { className: 'grid grid-cols-2 gap-2' },
+                  ...Object.values(photos).flat().slice(-6).map((photo, i) =>
+                    h('img', {
+                      key: i,
+                      src: photo.data,
+                      className: 'w-full h-32 object-cover rounded-lg',
+                      alt: 'Homestead photo'
+                    })
+                  )
+                )
               )
             )
           )
@@ -1226,18 +739,16 @@
       );
     }
 
-    // Render app
     ReactDOM.render(
       React.createElement(HomesteadHelperPro),
       document.getElementById('root')
     );
 
-    // Service worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
-          .then(registration => console.log('SW registered'))
-          .catch(err => console.log('SW registration failed'));
+          .then(reg => console.log('SW registered'))
+          .catch(err => console.log('SW failed'));
       });
     }
   </script>
