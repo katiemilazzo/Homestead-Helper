@@ -807,6 +807,12 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
           });
 
           const data = await response.json();
+          
+          // Better error handling for Gemini response
+          if (!data.candidates || data.candidates.length === 0) {
+            throw new Error('No response from AI');
+          }
+          
           const aiResponse = data.candidates[0].content.parts[0].text;
           
           await addMessage('assistant', aiResponse);
@@ -815,7 +821,8 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
           
         } catch (e) {
           console.error('AI error:', e);
-          const errorMsg = "Sorry, I had trouble connecting. Please try again.";
+          console.error('Full error details:', e.message);
+          const errorMsg = "Sorry, I had trouble connecting. Please try again in a moment.";
           await addMessage('assistant', errorMsg);
           speak(errorMsg);
         }
@@ -896,6 +903,11 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
             });
 
             const data = await response.json();
+            
+            if (!data.candidates || data.candidates.length === 0) {
+              throw new Error('No response from AI for photo');
+            }
+            
             const analysis = data.candidates[0].content.parts[0].text;
             
             await addMessage('assistant', analysis, { isPhotoAnalysis: true });
