@@ -46,24 +46,25 @@
   <script type="module">
     import { GoogleGenerativeAI } from "@google/generative-ai";
 
+    // REPLACE with your specific Firebase project configuration
     const firebaseConfig = {
       apiKey: "AIzaSyDSR3019LmFBUSLUfr3xCNW67WpXKc9edQ",
-      authDomain: "homestead-helper-fdc23.firebaseapp.com",
-      projectId: "homestead-helper-fdc23",
-      storageBucket: "homestead-helper-fdc23.firebasestorage.app",
-      messagingSenderId: "704725515036",
-      appId: "1:704725515036:web:4dd3427e51afe507b018d9"
+  authDomain: "homestead-helper-fdc23.firebaseapp.com",
+  projectId: "homestead-helper-fdc23",
+  storageBucket: "homestead-helper-fdc23.firebasestorage.app",
+  messagingSenderId: "704725515036",
+  appId: "1:704725515036:web:4dd3427e51afe507b018d9",
+  measurementId: "G-NZX2TPDB0L"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const storage = firebase.storage();
     const genAI = new GoogleGenerativeAI(firebaseConfig.apiKey);
     
-    // System Instructions tailored to your homestead
     const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash",
-      systemInstruction: "You are the Homestead Helper AI for a family in Airville, PA (Mike, his wife, and 9-year-old Abby). You are a specialist in homesteading, including caring for sheep, goats, bees, a garden, chickens, ducks, and peafowl. You are observant, practical, and helpful. You analyze photos for health issues or plant pests and maintain a memory of homestead facts."
+      systemInstruction: "You are a Homestead Assistant AI. You help manage livestock, gardening, and family chores. You are observant, practical, and helpful. You analyze photos for health issues or plant pests and maintain a memory of homestead facts to provide context-aware advice."
     });
 
     const { useState, useEffect, useRef, createElement: h } = React;
@@ -79,13 +80,13 @@
       const messagesEndRef = useRef(null);
 
       useEffect(() => {
-        const unsubsMsg = db.collection('homesteads/family/messages').orderBy('timestamp', 'asc').limit(50)
+        const unsubsMsg = db.collection('messages').orderBy('timestamp', 'asc').limit(50)
           .onSnapshot(snap => {
             setMessages(snap.docs.map(doc => doc.data()));
             setConnStatus('Online');
-          }, () => setConnStatus('Auth Error - Check Rules'));
+          }, () => setConnStatus('Connection Error'));
 
-        const unsubsKnow = db.collection('homesteads/family/knowledge').orderBy('timestamp', 'desc')
+        const unsubsKnow = db.collection('knowledge').orderBy('timestamp', 'desc')
           .onSnapshot(snap => setKnowledge(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 
         return () => { unsubsMsg(); unsubsKnow(); };
@@ -111,7 +112,6 @@
         setSelectedImage(null);
 
         try {
-          // 1. Upload Photo if exists
           let imageUrl = null;
           if (currentImg) {
             const fileName = `homestead_${Date.now()}.jpg`;
@@ -120,49 +120,34 @@
             imageUrl = await snapshot.ref.getDownloadURL();
           }
 
-          // 2. Fetch Weather if "weather" is mentioned
-          let weatherData = "";
-          if (userPrompt.toLowerCase().includes('weather')) {
-            try {
-              const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=39.8157&longitude=-76.3316&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto`);
-              const data = await res.json();
-              weatherData = `Current temp in Airville is ${data.current.temperature_2m}°C. High today: ${data.daily.temperature_2m_max[0]}°C.`;
-            } catch (e) { weatherData = "Weather data unavailable."; }
-          }
+          await db.collection('messages').add({
+            role: 'user', content: userPrompt, image: imageUrl, timestamp: Date.now()
+          });
 
-          // 3. Prepare AI Payload
           const knowledgeBase = knowledge.map(k => k.fact).join(". ");
-          const parts = [
-            { text: `CONTEXT: ${knowledgeBase}. ${weatherData}. USER PROMPT: ${userPrompt}` }
-          ];
+          const parts = [{ text: `CONTEXT: ${knowledgeBase}. USER PROMPT: ${userPrompt}` }];
+          
           if (currentImg) {
             parts.push({ inlineData: { data: currentImg.split(',')[1], mimeType: "image/jpeg" } });
           }
 
-          // 4. Update UI with User Msg
-          await db.collection('homesteads/family/messages').add({
-            role: 'user', content: userPrompt, image: imageUrl, timestamp: Date.now()
-          });
-
-          // 5. Call AI
           const result = await model.generateContent({ contents: [{ role: "user", parts }] });
           const responseText = result.response.text();
 
-          await db.collection('homesteads/family/messages').add({
+          await db.collection('messages').add({
             role: 'assistant', content: responseText, timestamp: Date.now()
           });
 
-          // 6. Auto-Learn
-          const learnRes = await model.generateContent(`Extract specific permanent facts about the animals (sheep, goats, bees), garden, or chores from this: "${userPrompt}". Reply ONLY with the facts or "None".`);
+          const learnRes = await model.generateContent(`Extract specific permanent facts about the homestead from: "${userPrompt}". Reply ONLY with the facts or "None".`);
           const fact = learnRes.response.text();
           if (fact.toLowerCase() !== 'none' && fact.length > 3) {
-            await db.collection('homesteads/family/knowledge').add({ fact, timestamp: Date.now() });
+            await db.collection('knowledge').add({ fact, timestamp: Date.now() });
           }
 
         } catch (error) {
           console.error("AI FAIL:", error);
-          await db.collection('homesteads/family/messages').add({
-            role: 'assistant error-bubble', content: `⚠️ Error: ${error.message}. Ensure Generative Language API is enabled.`, timestamp: Date.now()
+          await db.collection('messages').add({
+            role: 'assistant error-bubble', content: `⚠️ Error: ${error.message}`, timestamp: Date.now()
           });
         } finally { setLoading(false); }
       };
@@ -205,7 +190,7 @@
               onChange: (e) => setInputText(e.target.value),
               onKeyPress: (e) => e.key === 'Enter' && sendMessage(),
               className: 'flex-1 p-3 border-2 border-amber-100 rounded-xl outline-none focus:border-amber-400',
-              placeholder: 'Goat with a limp? Tell me here...'
+              placeholder: 'Ask a question or upload a photo...'
             }),
             h('button', { 
               onClick: sendMessage,
@@ -217,7 +202,7 @@
         h('div', { className: `slide-panel ${showKnowledge ? 'open' : ''}` },
           h('div', { className: 'p-6' },
             h('div', { className: 'flex justify-between items-center mb-6' },
-              h('h2', { className: 'text-xl font-bold text-amber-900' }, 'Homestead Knowledge'),
+              h('h2', { className: 'text-xl font-bold text-amber-900' }, 'Knowledge Base'),
               h('button', { onClick: () => setShowKnowledge(false), className: 'text-2xl' }, '✕')
             ),
             h('div', { className: 'flex flex-col gap-3' },
