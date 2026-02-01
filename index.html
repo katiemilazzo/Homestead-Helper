@@ -282,10 +282,6 @@
       const [currentLocation, setCurrentLocation] = useState(null);
       const [geofences, setGeofences] = useState([]);
       const [activeReminders, setActiveReminders] = useState([]);
-      const [availableVoices, setAvailableVoices] = useState([]);
-      const [selectedVoice, setSelectedVoice] = useState(null);
-      const [showVoiceSelector, setShowVoiceSelector] = useState(false);
-      const [voiceEnabled, setVoiceEnabled] = useState(false);
       
       const messagesEndRef = useRef(null);
       const recognitionRef = useRef(null);
@@ -346,12 +342,6 @@
         initSpeechRecognition();
         initSpeechSynthesis();
         requestLocation();
-        
-        // Load voice preference
-        const savedVoiceEnabled = localStorage.getItem('voiceEnabled');
-        if (savedVoiceEnabled === 'true') {
-          setVoiceEnabled(true);
-        }
         
         const hasGreeted = localStorage.getItem('hasGreeted');
         if (!hasGreeted) {
@@ -623,35 +613,6 @@
 
       function initSpeechSynthesis() {
         speechSynthRef.current = window.speechSynthesis;
-        
-        // Load voices
-        const loadVoices = () => {
-          const voices = speechSynthRef.current.getVoices();
-          setAvailableVoices(voices);
-          
-          // Try to select a good default voice
-          const savedVoice = localStorage.getItem('preferredVoice');
-          if (savedVoice) {
-            const voice = voices.find(v => v.name === savedVoice);
-            if (voice) setSelectedVoice(voice);
-          } else {
-            // Default to first English voice that sounds natural
-            const goodVoice = voices.find(v => 
-              v.lang.startsWith('en') && 
-              (v.name.includes('Natural') || v.name.includes('Enhanced') || v.name.includes('Premium') || v.name.includes('Google'))
-            ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
-            
-            setSelectedVoice(goodVoice);
-          }
-        };
-        
-        // Load voices immediately
-        loadVoices();
-        
-        // Voices might load async on some browsers
-        if (speechSynthRef.current.onvoiceschanged !== undefined) {
-          speechSynthRef.current.onvoiceschanged = loadVoices;
-        }
       }
 
       function toggleRecording() {
@@ -670,17 +631,11 @@
       }
 
       function speak(text) {
-        if (!speechSynthRef.current || !voiceEnabled) return;
+        if (!speechSynthRef.current) return;
         
         speechSynthRef.current.cancel();
         
         const utterance = new SpeechSynthesisUtterance(text);
-        
-        // Use selected voice if available
-        if (selectedVoice) {
-          utterance.voice = selectedVoice;
-        }
-        
         utterance.rate = 1.0;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
@@ -689,29 +644,6 @@
         utterance.onend = () => setIsAISpeaking(false);
         
         speechSynthRef.current.speak(utterance);
-      }
-
-      function changeVoice(voice) {
-        setSelectedVoice(voice);
-        setVoiceEnabled(true); // Enable voice when user selects one
-        localStorage.setItem('preferredVoice', voice.name);
-        localStorage.setItem('voiceEnabled', 'true');
-        
-        // Test the voice
-        const testUtterance = new SpeechSynthesisUtterance("Hello! This is how I'll sound.");
-        testUtterance.voice = voice;
-        speechSynthRef.current.speak(testUtterance);
-      }
-
-      function toggleVoice() {
-        const newState = !voiceEnabled;
-        setVoiceEnabled(newState);
-        localStorage.setItem('voiceEnabled', newState.toString());
-        
-        if (newState && !selectedVoice && availableVoices.length > 0) {
-          // If enabling voice for first time, open selector
-          setShowVoiceSelector(true);
-        }
       }
 
       function stopSpeaking() {
@@ -826,17 +758,7 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
             })
           });
 
-          if (!response.ok) {
-            throw new Error(`API returned ${response.status}: ${response.statusText}`);
-          }
-
           const data = await response.json();
-          
-          // Better error handling for Gemini response
-          if (!data.candidates || data.candidates.length === 0) {
-            throw new Error('No response from AI');
-          }
-          
           const aiResponse = data.candidates[0].content.parts[0].text;
           
           await addMessage('assistant', aiResponse);
@@ -845,8 +767,7 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
           
         } catch (e) {
           console.error('AI error:', e);
-          console.error('Full error details:', e.message);
-          const errorMsg = "Sorry, I had trouble connecting. Please try again in a moment.";
+          const errorMsg = "Sorry, I had trouble connecting. Please try again.";
           await addMessage('assistant', errorMsg);
           speak(errorMsg);
         }
@@ -926,16 +847,7 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
               })
             });
 
-            if (!response.ok) {
-              throw new Error(`API returned ${response.status}`);
-            }
-
             const data = await response.json();
-            
-            if (!data.candidates || data.candidates.length === 0) {
-              throw new Error('No response from AI for photo');
-            }
-            
             const analysis = data.candidates[0].content.parts[0].text;
             
             await addMessage('assistant', analysis, { isPhotoAnalysis: true });
@@ -987,30 +899,6 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
                 }, '🔔'),
                 h('span', { className: 'folk-badge absolute -top-2 -right-2' }, activeReminders.length)
               ),
-              h('button', {
-                onClick: toggleVoice,
-                className: 'folk-button p-2',
-                style: voiceEnabled ? { 
-                  background: '#8FB996',
-                  color: '#FFF8E7',
-                  borderColor: '#8B6F47'
-                } : {
-                  background: '#E5E5E5',
-                  color: '#8B6F47',
-                  borderColor: '#8B6F47'
-                },
-                title: voiceEnabled ? 'Voice ON - Click to disable' : 'Voice OFF - Click to enable'
-              }, voiceEnabled ? '🔊' : '🔇'),
-              voiceEnabled && h('button', {
-                onClick: () => setShowVoiceSelector(true),
-                className: 'folk-button p-2',
-                style: { 
-                  background: '#FFE5B4',
-                  color: '#8B6F47',
-                  borderColor: '#8B6F47'
-                },
-                title: 'Change voice'
-              }, '🎤'),
               h('button', {
                 onClick: () => setShowGeofences(true),
                 className: 'folk-button p-2',
@@ -1445,102 +1333,6 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
                 h('p', { className: 'text-sm', style: { color: '#8B6F47', fontWeight: 600 } },
                   '💡 Tip: Say "set farm stand geofence" in the chat when you\'re at a location!'
                 )
-              )
-            )
-          )
-        ),
-
-        // Voice Selector Panel
-        showVoiceSelector && h('div', { className: 'fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4' },
-          h('div', { 
-            className: 'w-full max-w-md folk-card overflow-hidden',
-            style: { 
-              maxHeight: '70vh',
-              background: 'linear-gradient(135deg, #FFF8E7, #FFE5B4)'
-            }
-          },
-            h('div', { 
-              className: 'p-4 flex items-center justify-between',
-              style: { 
-                background: 'linear-gradient(to right, #FFE5B4, #FFB4A2)',
-                borderBottom: '3px solid #8B6F47'
-              }
-            },
-              h('h2', { 
-                className: 'text-xl font-bold',
-                style: { fontFamily: "'Crimson Text', serif", color: '#8B6F47' }
-              }, '🎤 Choose Voice'),
-              h('button', {
-                onClick: () => setShowVoiceSelector(false),
-                className: 'folk-button px-4 py-2',
-                style: {
-                  background: '#E5989B',
-                  color: '#8B6F47',
-                  borderColor: '#8B6F47'
-                }
-              }, 'Close')
-            ),
-            
-            h('div', { className: 'p-4 overflow-y-auto', style: { maxHeight: 'calc(70vh - 80px)' } },
-              h('p', { 
-                className: 'mb-4 text-sm',
-                style: { color: '#9B5D6B', fontWeight: 500 }
-              }, 'Try different voices! Some sound much better than others. Click to test, then close to save.'),
-              
-              selectedVoice && h('div', { 
-                className: 'mb-4 p-3 rounded-xl',
-                style: { background: '#B5E7D3', border: '2.5px solid #8B6F47' }
-              },
-                h('p', { 
-                  className: 'text-sm font-semibold',
-                  style: { color: '#8B6F47' }
-                }, `Current: ${selectedVoice.name}`),
-                h('p', { 
-                  className: 'text-xs mt-1',
-                  style: { color: '#4A5568' }
-                }, `Language: ${selectedVoice.lang}`)
-              ),
-              
-              h('div', { className: 'space-y-2' },
-                ...availableVoices.map((voice, i) => {
-                  const isSelected = selectedVoice && selectedVoice.name === voice.name;
-                  const isEnglish = voice.lang.startsWith('en');
-                  
-                  return h('button', {
-                    key: i,
-                    onClick: () => changeVoice(voice),
-                    className: 'w-full text-left p-3 rounded-xl folk-button transition-all',
-                    style: isSelected ? {
-                      background: '#8FB996',
-                      color: '#FFF8E7',
-                      borderColor: '#8B6F47'
-                    } : {
-                      background: isEnglish ? '#FFF8E7' : '#E5E5E5',
-                      color: '#4A5568',
-                      borderColor: '#8B6F47'
-                    }
-                  },
-                    h('div', { className: 'flex items-center justify-between' },
-                      h('div', null,
-                        h('p', { 
-                          className: 'font-semibold text-sm',
-                          style: { fontFamily: "'Josefin Sans', sans-serif" }
-                        }, voice.name),
-                        h('p', { className: 'text-xs opacity-75' }, 
-                          `${voice.lang} ${voice.localService ? '(Local)' : '(Online)'}`
-                        )
-                      ),
-                      isSelected && h('span', null, '✓')
-                    )
-                  );
-                })
-              ),
-              
-              availableVoices.length === 0 && h('div', { 
-                className: 'p-4 text-center',
-                style: { color: '#9B5D6B' }
-              },
-                h('p', null, 'Loading voices...')
               )
             )
           )
