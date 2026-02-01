@@ -285,6 +285,7 @@
       const [availableVoices, setAvailableVoices] = useState([]);
       const [selectedVoice, setSelectedVoice] = useState(null);
       const [showVoiceSelector, setShowVoiceSelector] = useState(false);
+      const [voiceEnabled, setVoiceEnabled] = useState(false);
       
       const messagesEndRef = useRef(null);
       const recognitionRef = useRef(null);
@@ -345,6 +346,12 @@
         initSpeechRecognition();
         initSpeechSynthesis();
         requestLocation();
+        
+        // Load voice preference
+        const savedVoiceEnabled = localStorage.getItem('voiceEnabled');
+        if (savedVoiceEnabled === 'true') {
+          setVoiceEnabled(true);
+        }
         
         const hasGreeted = localStorage.getItem('hasGreeted');
         if (!hasGreeted) {
@@ -663,7 +670,7 @@
       }
 
       function speak(text) {
-        if (!speechSynthRef.current) return;
+        if (!speechSynthRef.current || !voiceEnabled) return;
         
         speechSynthRef.current.cancel();
         
@@ -686,12 +693,25 @@
 
       function changeVoice(voice) {
         setSelectedVoice(voice);
+        setVoiceEnabled(true); // Enable voice when user selects one
         localStorage.setItem('preferredVoice', voice.name);
+        localStorage.setItem('voiceEnabled', 'true');
         
         // Test the voice
         const testUtterance = new SpeechSynthesisUtterance("Hello! This is how I'll sound.");
         testUtterance.voice = voice;
         speechSynthRef.current.speak(testUtterance);
+      }
+
+      function toggleVoice() {
+        const newState = !voiceEnabled;
+        setVoiceEnabled(newState);
+        localStorage.setItem('voiceEnabled', newState.toString());
+        
+        if (newState && !selectedVoice && availableVoices.length > 0) {
+          // If enabling voice for first time, open selector
+          setShowVoiceSelector(true);
+        }
       }
 
       function stopSpeaking() {
@@ -806,6 +826,10 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
             })
           });
 
+          if (!response.ok) {
+            throw new Error(`API returned ${response.status}: ${response.statusText}`);
+          }
+
           const data = await response.json();
           
           // Better error handling for Gemini response
@@ -902,6 +926,10 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
               })
             });
 
+            if (!response.ok) {
+              throw new Error(`API returned ${response.status}`);
+            }
+
             const data = await response.json();
             
             if (!data.candidates || data.candidates.length === 0) {
@@ -960,6 +988,20 @@ GEOFENCING: If user mentions setting a geofence or location reminder, respond po
                 h('span', { className: 'folk-badge absolute -top-2 -right-2' }, activeReminders.length)
               ),
               h('button', {
+                onClick: toggleVoice,
+                className: 'folk-button p-2',
+                style: voiceEnabled ? { 
+                  background: '#8FB996',
+                  color: '#FFF8E7',
+                  borderColor: '#8B6F47'
+                } : {
+                  background: '#E5E5E5',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                },
+                title: voiceEnabled ? 'Voice ON - Click to disable' : 'Voice OFF - Click to enable'
+              }, voiceEnabled ? '🔊' : '🔇'),
+              voiceEnabled && h('button', {
                 onClick: () => setShowVoiceSelector(true),
                 className: 'folk-button p-2',
                 style: { 
