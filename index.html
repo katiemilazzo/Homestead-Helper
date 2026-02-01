@@ -2,69 +2,148 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Homestead Helper Pro</title>
+
   <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 </head>
-<body class="bg-amber-50 min-h-screen flex flex-col">
 
-  <div class="flex-1 p-6 space-y-4" id="chat"></div>
-
-  <div class="p-4 border-t flex gap-2">
-    <input
-      id="userInput"
-      class="flex-1 border rounded px-3 py-2"
-      placeholder="Tell me what's happening..."
-    />
-    <button
-      onclick="sendMessage()"
-      class="bg-amber-400 px-4 py-2 rounded"
-    >
-      Send
-    </button>
-  </div>
+<body class="bg-[#FFF8E7]">
+  <div id="root"></div>
 
   <script>
-    const API_KEY = "YOUR_GEMINI_API_KEY";
-    const MODEL = "gemini-1.5-flash";
+    /* -------------------- Firebase -------------------- */
+    firebase.initializeApp({
+      apiKey: "AIzaSyDSR3019LmFBUSLUfr3xCNW67WpXKc9edQ",
+      authDomain: "homestead-helper-fdc23.firebaseapp.com",
+      projectId: "homestead-helper-fdc23"
+    });
 
-    function addMessage(text, role = "assistant") {
-      const chat = document.getElementById("chat");
-      const bubble = document.createElement("div");
-      bubble.className =
-        role === "user"
-          ? "ml-auto bg-rose-300 p-3 rounded-lg max-w-md"
-          : "mr-auto bg-amber-200 p-3 rounded-lg max-w-md";
-      bubble.textContent = text;
-      chat.appendChild(bubble);
-      chat.scrollTop = chat.scrollHeight;
+    const db = firebase.firestore();
+    const { useState, useEffect, useRef, createElement: h } = React;
+
+    /* -------------------- App -------------------- */
+    function HomesteadHelperPro() {
+      const [messages, setMessages] = useState([]);
+      const [inputText, setInputText] = useState("");
+      const [isLoading, setIsLoading] = useState(false);
+      const messagesEndRef = useRef(null);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, [messages]);
+
+      async function addMessage(role, content) {
+        const msg = { role, content, timestamp: Date.now() };
+        setMessages(prev => [...prev, msg]);
+        try {
+          await db.collection("messages").add(msg);
+        } catch (e) {
+          console.warn("Firestore write failed:", e);
+        }
+      }
+
+      /* -------------------- Gemini -------------------- */
+      async function getAIResponse(userMessage) {
+        try {
+          const response = await fetch(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyBBFRyRbxXsyX7LZWcEYwYdcLxzKYabtlk",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: userMessage }] }],
+                generationConfig: { temperature: 0.7, maxOutputTokens: 500 }
+              })
+            }
+          );
+
+          const data = await response.json();
+
+          /* 🔍 LOG EVERYTHING */
+          console.log("Gemini raw response:", data);
+
+          /* 🛡️ RESPONSE GUARD */
+          const text =
+            data?.candidates?.[0]?.content?.parts
+              ?.map(p => p.text)
+              ?.join("")
+              ?.trim();
+
+          if (!text) {
+            console.warn("Gemini returned no usable text.");
+            await addMessage(
+              "assistant",
+              "I’m having trouble forming a response right now. Want to try rephrasing?"
+            );
+            return;
+          }
+
+          await addMessage("assistant", text);
+
+        } catch (err) {
+          console.error("AI request failed:", err);
+          await addMessage(
+            "assistant",
+            "Sorry, I couldn’t reach my thinking brain just now. Try again in a moment."
+          );
+        }
+      }
+
+      async function sendMessage() {
+        if (!inputText.trim()) return;
+        const msg = inputText.trim();
+        setInputText("");
+        await addMessage("user", msg);
+        setIsLoading(true);
+        await getAIResponse(msg);
+        setIsLoading(false);
+      }
+
+      /* -------------------- Render -------------------- */
+      return h("div", { className: "max-w-3xl mx-auto p-4 h-screen flex flex-col" },
+        h("h1", { className: "text-2xl font-bold mb-4" }, "🏡 Homestead Helper"),
+        h("div", { className: "flex-1 overflow-y-auto mb-4" },
+          messages.map((m, i) =>
+            h("div", {
+              key: i,
+              className: `mb-2 ${m.role === "user" ? "text-right" : "text-left"}`
+            },
+              h("div", {
+                className: `inline-block px-4 py-2 rounded-xl ${
+                  m.role === "user"
+                    ? "bg-[#FFB4A2]"
+                    : "bg-[#FFE5B4]"
+                }`
+              }, m.content)
+            )
+          ),
+          isLoading && h("div", { className: "italic opacity-60" }, "Thinking…"),
+          h("div", { ref: messagesEndRef })
+        ),
+        h("div", { className: "flex gap-2" },
+          h("input", {
+            className: "flex-1 border rounded-lg px-3 py-2",
+            value: inputText,
+            onChange: e => setInputText(e.target.value),
+            onKeyDown: e => e.key === "Enter" && sendMessage(),
+            placeholder: "Tell me what’s happening on the farm…"
+          }),
+          h("button", {
+            onClick: sendMessage,
+            className: "px-4 py-2 rounded-lg bg-[#8FB996] text-white"
+          }, "Send")
+        )
+      );
     }
 
-    async function sendMessage() {
-      const input = document.getElementById("userInput");
-      const message = input.value.trim();
-      if (!message) return;
-
-      addMessage(message, "user");
-      input.value = "";
-
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [
-                {
-                  role: "user",
-                  parts: [{ text: message }]
-                }
-              ]
-            })
-          }
-        );
-
-        const data = await response.json();
-
-        // 🔍 FULL RESPONSE LOG
-        console
+    ReactDOM.createRoot(document.getElementById("root"))
+      .render(h(HomesteadHelperPro));
+  </script>
+</body>
+</html>
