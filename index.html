@@ -6,28 +6,30 @@
   <title>Homestead Helper Pro</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
-    :root { --cream: #FFF8E7; --peach: #FFB4A2; --brown: #8B6F47; --mint: #B5E7D3; }
-    body { font-family: 'Josefin Sans', sans-serif; background: var(--cream); margin: 0; overflow: hidden; }
-    .chat-container { height: 100vh; display: flex; flex-direction: column; }
-    .messages-container { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 12px; }
-    .message-bubble { border: 2.5px solid var(--brown); border-radius: 18px; padding: 12px; max-width: 85%; line-height: 1.4; }
-    .user { align-self: flex-end; background: var(--mint); box-shadow: 4px 4px 0 rgba(0,0,0,0.05); }
-    .assistant { align-self: flex-start; background: white; box-shadow: -4px 4px 0 rgba(0,0,0,0.05); }
-    .panel { position: fixed; top: 0; right: -100%; width: 100%; max-width: 350px; height: 100vh; transition: 0.3s; z-index: 100; background: var(--cream); border-left: 4px solid var(--brown); padding: 20px; }
-    .panel.open { right: 0; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
-  </style>
-
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
+    :root { --cream: #FFF8E7; --peach: #FFB4A2; --brown: #8B6F47; --mint: #B5E7D3; }
+    body { font-family: 'Josefin Sans', sans-serif; background: var(--cream); margin: 0; }
+    .chat-container { height: 100vh; display: flex; flex-direction: column; }
+    .messages-container { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 12px; }
+    .message-bubble { border: 2.5px solid var(--brown); border-radius: 18px; padding: 12px; max-width: 85%; }
+    .user { align-self: flex-end; background: var(--mint); }
+    .assistant { align-self: flex-start; background: white; }
+    .status-bar { font-size: 10px; padding: 2px 8px; background: rgba(0,0,0,0.05); display: flex; gap: 10px; }
+  </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div style="display:flex; height:100vh; align-items:center; justify-content:center; color:var(--brown)">
+      Checking Homestead Systems...
+    </div>
+  </div>
 
   <script type="module">
     import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
@@ -41,101 +43,77 @@
       appId: "1:704725515036:web:4dd3427e51afe507b018d9"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    // Initialize Firebase
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-    const storage = firebase.storage();
     const { useState, useEffect, useRef, createElement: h } = React;
 
     function App() {
       const [messages, setMessages] = useState([]);
-      const [knowledge, setKnowledge] = useState([]);
       const [input, setInput] = useState('');
-      const [img, setImg] = useState(null);
       const [loading, setLoading] = useState(false);
-      const [status, setStatus] = useState({ db: 'gray', ai: 'gray' });
-      const [panelOpen, setPanelOpen] = useState(false);
+      const [status, setStatus] = useState('Wait...');
       const scrollRef = useRef(null);
 
       useEffect(() => {
-        const unsubM = db.collection('messages').orderBy('timestamp', 'asc').limit(50)
-          .onSnapshot(s => { 
+        const unsub = db.collection('messages').orderBy('timestamp', 'asc').limit(50)
+          .onSnapshot(s => {
             setMessages(s.docs.map(d => d.data()));
-            setStatus(prev => ({ ...prev, db: 'green' }));
-          }, () => setStatus(prev => ({ ...prev, db: 'red' })));
-        
-        const unsubK = db.collection('knowledge').onSnapshot(s => setKnowledge(s.docs.map(d => d.data())));
-        return () => { unsubM(); unsubK(); };
+            setStatus('Online');
+          }, err => setStatus('DB Error: ' + err.message));
+        return () => unsub();
       }, []);
 
       useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-      const handleFile = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => setImg(reader.result);
-          reader.readAsDataURL(file);
-        }
-      };
-
       const send = async () => {
-        if ((!input.trim() && !img) || loading) return;
+        if (!input.trim() || loading) return;
         setLoading(true);
-        const userPrompt = input;
-        const currentImg = img;
-        setInput(''); setImg(null);
+        const userText = input;
+        setInput('');
 
         try {
           const genAI = new GoogleGenerativeAI(firebaseConfig.apiKey);
-          const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
-            systemInstruction: "You are a Homestead Assistant for Airville, PA. You manage sheep (Ruth), goats (Salt, Pepper, Cumin), bees, and a garden. You use the provided knowledge base to remember facts."
-          });
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-          // 1. Upload Photo if present
-          let url = null;
-          if (currentImg) {
-            const ref = storage.ref().child(`photos/${Date.now()}.jpg`);
-            const snap = await ref.putString(currentImg, 'data_url');
-            url = await snap.ref.getDownloadURL();
-          }
+          await db.collection('messages').add({ role: 'user', content: userText, timestamp: Date.now() });
 
-          // 2. Save User Msg
-          await db.collection('messages').add({ role: 'user', content: userPrompt, image: url, timestamp: Date.now() });
-
-          // 3. AI Logic
-          const kBase = knowledge.map(k => k.fact).join(". ");
-          const parts = [{ text: `Knowledge: ${kBase}. Prompt: ${userPrompt}` }];
-          if (currentImg) parts.push({ inlineData: { data: currentImg.split(',')[1], mimeType: "image/jpeg" } });
-
-          const result = await model.generateContent({ contents: [{ role: "user", parts }] });
+          const result = await model.generateContent(userText);
           const aiText = result.response.text();
 
           await db.collection('messages').add({ role: 'assistant', content: aiText, timestamp: Date.now() });
-          setStatus(prev => ({ ...prev, ai: 'green' }));
-
-          // 4. Learning logic
-          const learn = await model.generateContent(`Extract specific facts from: "${userPrompt}". Reply 'None' or just the facts.`);
-          const fact = learn.response.text();
-          if (fact.toLowerCase() !== 'none') await db.collection('knowledge').add({ fact, timestamp: Date.now() });
-
         } catch (e) {
-          setStatus(prev => ({ ...prev, ai: 'red' }));
-          await db.collection('messages').add({ role: 'assistant', content: "⚠️ AI Error: " + e.message, timestamp: Date.now() });
-        } finally { setLoading(false); }
+          setStatus('AI Error: ' + e.message);
+        } finally {
+          setLoading(false);
+        }
       };
 
       return h('div', { className: 'chat-container' },
-        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 flex justify-between items-center' },
-          h('div', null,
-            h('h1', { className: 'text-xl font-bold text-amber-900' }, '🏡 Homestead Helper'),
-            h('div', { className: 'text-[10px] mt-1' },
-              h('span', { className: 'status-dot', style: { background: status.db } }), 'DB ',
-              h('span', { className: 'status-dot ml-2', style: { background: status.ai } }), 'AI'
-            )
-          ),
-          h('button', { onClick: () => setPanelOpen(true), className: 'bg-white border-2 border-amber-900 px-3 py-1 rounded-xl font-bold text-xs' }, 'BRAIN')
+        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 text-center' },
+          h('h1', { className: 'text-xl font-bold text-amber-900' }, '🏡 Homestead Helper'),
+          h('div', { className: 'status-bar' }, 'System: ' + status)
         ),
-
         h('div', { className: 'messages-container' },
-          messages.map((m, i) => h('div', {
+          messages.map((m, i) => h('div', { key: i, className: `message-bubble ${m.role}` }, m.content)),
+          loading && h('div', { className: 'assistant message-bubble' }, '...'),
+          h('div', { ref: scrollRef })
+        ),
+        h('div', { className: 'p-4 bg-white border-t-2 border-amber-900 flex gap-2' },
+          h('input', {
+            value: input, onChange: e => setInput(e.target.value),
+            onKeyPress: e => e.key === 'Enter' && send(),
+            className: 'flex-1 p-2 border-2 border-amber-100 rounded-xl outline-none',
+            placeholder: 'Type here...'
+          }),
+          h('button', { onClick: send, className: 'bg-amber-800 text-white px-4 py-2 rounded-xl' }, 'Send')
+        )
+      );
+    }
+
+    // React 18 Render logic
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(h(App));
+  </script>
+</body>
+</html>
