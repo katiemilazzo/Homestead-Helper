@@ -4,25 +4,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Homestead Helper Pro</title>
+  
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
     :root { --cream: #FFF8E7; --brown: #8B6F47; --mint: #B5E7D3; }
     body { font-family: 'Josefin Sans', sans-serif; background: var(--cream); margin: 0; }
     .chat-container { height: 100vh; display: flex; flex-direction: column; }
-    .messages-container { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 10px; }
-    .bubble { border: 2px solid var(--brown); border-radius: 15px; padding: 12px; max-width: 85%; }
+    .messages-container { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 12px; }
+    .bubble { border: 2.5px solid var(--brown); border-radius: 18px; padding: 12px; max-width: 85%; }
     .user { align-self: flex-end; background: var(--mint); }
     .assistant { align-self: flex-start; background: white; }
-    .error-log { font-family: monospace; font-size: 10px; background: #fee2e2; color: #991b1b; padding: 8px; border-radius: 5px; margin-top: 5px; overflow-wrap: break-word; }
+    .status-pill { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
   </style>
 </head>
 <body>
   <div id="root"></div>
+
   <script type="module">
     import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 
@@ -39,17 +42,19 @@
     const db = firebase.firestore();
     const { useState, useEffect, useRef, createElement: h } = React;
 
-    function App() {
+    function HomesteadApp() {
       const [messages, setMessages] = useState([]);
       const [input, setInput] = useState('');
       const [loading, setLoading] = useState(false);
-      const [errorDetails, setErrorDetails] = useState(null);
+      const [dbStatus, setDbStatus] = useState('Wait');
       const scrollRef = useRef(null);
 
       useEffect(() => {
-        const unsub = db.collection('messages').orderBy('timestamp', 'asc').onSnapshot(s => {
-          setMessages(s.docs.map(d => d.data()));
-        });
+        const unsub = db.collection('messages').orderBy('timestamp', 'asc').limit(50)
+          .onSnapshot(snap => {
+            setMessages(snap.docs.map(doc => doc.data()));
+            setDbStatus('Online');
+          }, err => setDbStatus('Error'));
         return () => unsub();
       }, []);
 
@@ -60,49 +65,52 @@
         const prompt = input;
         setInput('');
         setLoading(true);
-        setErrorDetails(null);
 
         try {
           const genAI = new GoogleGenerativeAI(config.apiKey);
-          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+          const model = genAI.getGenerativeModel({ 
+            model: "gemini-1.5-flash",
+            systemInstruction: "You are a Homestead Assistant for a family in Airville, PA (Mike and family). You know about Ruth the sheep, bees, and the garden. You provide practical, helpful advice."
+          });
 
-          // Log user message to DB
           await db.collection('messages').add({ role: 'user', content: prompt, timestamp: Date.now() });
-
-          // Try AI
+          
           const result = await model.generateContent(prompt);
-          const response = await result.response;
-          const text = response.text();
+          const aiText = result.response.text();
 
-          await db.collection('messages').add({ role: 'assistant', content: text, timestamp: Date.now() });
+          await db.collection('messages').add({ role: 'assistant', content: aiText, timestamp: Date.now() });
         } catch (e) {
-          console.error("FULL ERROR OBJECT:", e);
-          setErrorDetails(e.toString());
+          console.error("AI ERROR:", e);
+          alert("AI Failed: " + e.message);
         } finally {
           setLoading(false);
         }
       };
 
       return h('div', { className: 'chat-container' },
-        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 text-center font-bold text-amber-900' }, '🏡 Homestead Helper Diagnostic Mode'),
+        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 flex justify-between items-center' },
+          h('h1', { className: 'text-xl font-bold text-amber-900' }, '🏡 Homestead Helper'),
+          h('span', { className: 'status-pill', style: { background: dbStatus === 'Online' ? '#B5E7D3' : '#FFB4A2' } }, `DB: ${dbStatus}`)
+        ),
         h('div', { className: 'messages-container' },
           messages.map((m, i) => h('div', { key: i, className: `bubble ${m.role}` }, m.content)),
-          loading && h('div', { className: 'assistant bubble' }, 'Sending to Gemini...'),
-          errorDetails && h('div', { className: 'error-log' }, 
-            h('p', { className: 'font-bold' }, "⚠️ CONNECTION FAILED:"),
-            h('p', null, errorDetails)
-          ),
+          loading && h('div', { className: 'assistant bubble' }, 'Thinking...'),
           h('div', { ref: scrollRef })
         ),
         h('div', { className: 'p-4 bg-white border-t-2 border-amber-900 flex gap-2' },
-          h('input', { value: input, onChange: e => setInput(e.target.value), onKeyPress: e => e.key === 'Enter' && send(), className: 'flex-1 p-2 border rounded outline-none' }),
-          h('button', { onClick: send, className: 'bg-amber-800 text-white px-6 py-2 rounded font-bold' }, 'Send')
+          h('input', {
+            value: input, onChange: e => setInput(e.target.value),
+            onKeyPress: e => e.key === 'Enter' && send(),
+            className: 'flex-1 p-2 border-2 border-amber-100 rounded-xl outline-none',
+            placeholder: 'Ask about Ruth or the garden...'
+          }),
+          h('button', { onClick: send, className: 'bg-amber-800 text-white px-6 py-2 rounded-xl font-bold' }, 'Send')
         )
       );
     }
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(h(App));
+    root.render(h(HomesteadApp));
   </script>
 </body>
 </html>
