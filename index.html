@@ -3,219 +3,1563 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Homestead">
+  <meta name="theme-color" content="#FFB4A2">
   <title>Homestead Helper Pro</title>
+  
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23FFB4A2' width='100' height='100'/%3E%3Ctext y='75' font-size='70' text-anchor='middle' x='50'%3E🏡%3C/text%3E%3C/svg%3E">
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   
+  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
   
-  <script type="importmap">
-    {
-      "imports": {
-        "@google/generative-ai": "https://esm.run/@google/generative-ai"
-      }
-    }
-  </script>
-
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600;700&family=Josefin+Sans:wght@300;400;600;700&display=swap');
+    
     :root {
-      --folk-cream: #FFF8E7; --folk-peach: #FFB4A2; --folk-brown: #8B6F47;
-      --folk-mint: #B5E7D3; --folk-sage: #8FB996;
+      --folk-cream: #FFF8E7;
+      --folk-peach: #FFB4A2;
+      --folk-coral: #E5989B;
+      --folk-terracotta: #D68A7F;
+      --folk-mint: #B5E7D3;
+      --folk-sage: #8FB996;
+      --folk-lavender: #C9B8E4;
+      --folk-butter: #FFE5B4;
+      --folk-brown: #8B6F47;
+      --folk-navy: #4A5568;
+      --folk-burgundy: #9B5D6B;
+      --folk-sky: #A8DADC;
     }
-    body { font-family: 'Josefin Sans', sans-serif; background: var(--folk-cream); margin: 0; overflow: hidden; }
-    .chat-container { height: 100vh; display: flex; flex-direction: column; }
-    .messages-container { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 12px; }
-    .message-bubble { border: 2.5px solid var(--folk-brown); border-radius: 18px; padding: 12px; max-width: 85%; position: relative; }
-    .user { align-self: flex-end; background: var(--folk-mint); box-shadow: 4px 4px 0 rgba(139, 111, 71, 0.1); }
-    .assistant { align-self: flex-start; background: white; box-shadow: -4px 4px 0 rgba(139, 111, 71, 0.1); }
-    .error-bubble { background: #fee2e2; border-color: #ef4444; color: #991b1b; font-size: 0.8rem; }
-    .slide-panel { position: fixed; top: 0; right: -100%; width: 100%; max-width: 400px; height: 100vh; transition: 0.3s ease-in-out; z-index: 100; background: var(--folk-cream); border-left: 4px solid var(--folk-brown); }
-    .slide-panel.open { right: 0; }
-    .loading-dot { display: inline-block; width: 6px; height: 6px; background: var(--folk-brown); border-radius: 50%; margin: 0 2px; animation: bounce 0.6s infinite alternate; }
-    @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-4px); } }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Josefin Sans', sans-serif;
+      background: var(--folk-cream);
+      overscroll-behavior-y: contain;
+    }
+    
+    .chat-container {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(135deg, var(--folk-cream) 0%, var(--folk-butter) 50%, var(--folk-cream) 100%);
+    }
+    
+    .messages-container {
+      flex: 1;
+      overflow-y-auto;
+      padding: 1.5rem;
+      position: relative;
+    }
+    
+    .messages-container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 2px;
+      height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        var(--folk-brown) 0px,
+        var(--folk-brown) 10px,
+        transparent 10px,
+        transparent 20px
+      );
+      opacity: 0.1;
+      pointer-events: none;
+    }
+    
+    .slide-panel {
+      position: fixed;
+      top: 0;
+      right: -100%;
+      width: 100%;
+      height: 100vh;
+      transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 100;
+      background: var(--folk-cream);
+      border-left: 4px solid var(--folk-brown);
+    }
+    
+    .slide-panel.open {
+      right: 0;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(1.05); }
+    }
+    
+    .recording-indicator {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    .voice-wave {
+      display: inline-block;
+      width: 5px;
+      height: 20px;
+      margin: 0 3px;
+      background: linear-gradient(to top, var(--folk-coral), var(--folk-peach));
+      border-radius: 10px;
+      animation: wave 1.2s ease-in-out infinite;
+    }
+    
+    .voice-wave:nth-child(1) { animation-delay: 0s; height: 15px; }
+    .voice-wave:nth-child(2) { animation-delay: 0.15s; height: 25px; }
+    .voice-wave:nth-child(3) { animation-delay: 0.3s; height: 35px; }
+    .voice-wave:nth-child(4) { animation-delay: 0.45s; height: 25px; }
+    .voice-wave:nth-child(5) { animation-delay: 0.6s; height: 15px; }
+    
+    @keyframes wave {
+      0%, 100% { transform: scaleY(1); }
+      50% { transform: scaleY(1.5); }
+    }
+
+    .folk-card {
+      border: 3px solid var(--folk-brown);
+      border-radius: 16px;
+      box-shadow: 5px 5px 0 rgba(139, 111, 71, 0.25);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .folk-card:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 7px 7px 0 rgba(139, 111, 71, 0.25);
+    }
+
+    .folk-button {
+      border: 2.5px solid currentColor;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      border-radius: 12px;
+      position: relative;
+    }
+
+    .folk-button:hover:not(:disabled) {
+      transform: translate(-2px, -2px);
+      box-shadow: 3px 3px 0 currentColor;
+    }
+
+    .folk-button:active:not(:disabled) {
+      transform: translate(0, 0);
+      box-shadow: 1px 1px 0 currentColor;
+    }
+
+    .message-bubble {
+      border: 2.5px solid;
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.1);
+      border-radius: 20px;
+      position: relative;
+    }
+
+    .message-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      width: 20px;
+      height: 20px;
+      border: 2.5px solid;
+      border-color: inherit;
+      background: inherit;
+    }
+
+    .message-bubble.user::after {
+      right: -8px;
+      border-radius: 0 0 20px 0;
+      border-top: none;
+      border-left: none;
+    }
+
+    .message-bubble.assistant::after {
+      left: -8px;
+      border-radius: 0 0 0 20px;
+      border-top: none;
+      border-right: none;
+    }
+
+    .folk-header {
+      border-bottom: 4px solid var(--folk-brown);
+      background: linear-gradient(to right, var(--folk-peach), var(--folk-coral), var(--folk-peach));
+      position: relative;
+    }
+
+    .folk-header::after {
+      content: '';
+      position: absolute;
+      bottom: -4px;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: repeating-linear-gradient(
+        90deg,
+        var(--folk-brown) 0px,
+        var(--folk-brown) 10px,
+        transparent 10px,
+        transparent 20px
+      );
+    }
+
+    .decorative-corner {
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      border: 2.5px solid var(--folk-brown);
+    }
+
+    .decorative-corner.top-left {
+      top: 10px;
+      left: 10px;
+      border-right: none;
+      border-bottom: none;
+      border-radius: 8px 0 0 0;
+    }
+
+    .decorative-corner.top-right {
+      top: 10px;
+      right: 10px;
+      border-left: none;
+      border-bottom: none;
+      border-radius: 0 8px 0 0;
+    }
+
+    .folk-badge {
+      background: var(--folk-burgundy);
+      color: white;
+      border: 2px solid var(--folk-brown);
+      border-radius: 20px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      box-shadow: 2px 2px 0 rgba(139, 111, 71, 0.3);
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
-  <script type="module">
-    import { GoogleGenerativeAI } from "@google/generative-ai";
-
-    // REPLACE with your specific Firebase project configuration
+  <script>
     const firebaseConfig = {
       apiKey: "AIzaSyDSR3019LmFBUSLUfr3xCNW67WpXKc9edQ",
-  authDomain: "homestead-helper-fdc23.firebaseapp.com",
-  projectId: "homestead-helper-fdc23",
-  storageBucket: "homestead-helper-fdc23.firebasestorage.app",
-  messagingSenderId: "704725515036",
-  appId: "1:704725515036:web:4dd3427e51afe507b018d9",
-  measurementId: "G-NZX2TPDB0L"
+      authDomain: "homestead-helper-fdc23.firebaseapp.com",
+      projectId: "homestead-helper-fdc23",
+      storageBucket: "homestead-helper-fdc23.firebasestorage.app",
+      messagingSenderId: "704725515036",
+      appId: "1:704725515036:web:4dd3427e51afe507b018d9"
     };
 
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-    const storage = firebase.storage();
-    const genAI = new GoogleGenerativeAI(firebaseConfig.apiKey);
-    
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      systemInstruction: "You are a Homestead Assistant AI. You help manage livestock, gardening, and family chores. You are observant, practical, and helpful. You analyze photos for health issues or plant pests and maintain a memory of homestead facts to provide context-aware advice."
-    });
-
     const { useState, useEffect, useRef, createElement: h } = React;
 
     function HomesteadHelperPro() {
       const [messages, setMessages] = useState([]);
-      const [knowledge, setKnowledge] = useState([]);
       const [inputText, setInputText] = useState('');
-      const [loading, setLoading] = useState(false);
-      const [showKnowledge, setShowKnowledge] = useState(false);
-      const [selectedImage, setSelectedImage] = useState(null);
-      const [connStatus, setConnStatus] = useState('Connecting...');
+      const [isRecording, setIsRecording] = useState(false);
+      const [isAISpeaking, setIsAISpeaking] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [showOrganized, setShowOrganized] = useState(false);
+      const [showGeofences, setShowGeofences] = useState(false);
+      const [tasks, setTasks] = useState({});
+      const [photos, setPhotos] = useState({});
+      const [profile, setProfile] = useState(null);
+      const [weather, setWeather] = useState(null);
+      const [currentLocation, setCurrentLocation] = useState(null);
+      const [geofences, setGeofences] = useState([]);
+      const [activeReminders, setActiveReminders] = useState([]);
+      const [availableVoices, setAvailableVoices] = useState([]);
+      const [selectedVoice, setSelectedVoice] = useState(null);
+      const [showVoiceSelector, setShowVoiceSelector] = useState(false);
+      const [voiceEnabled, setVoiceEnabled] = useState(false);
+      
       const messagesEndRef = useRef(null);
+      const recognitionRef = useRef(null);
+      const speechSynthRef = useRef(null);
+      const fileInputRef = useRef(null);
+      const locationWatchId = useRef(null);
+
+      const modules = [
+        { id: 'garden', name: 'Garden', emoji: '🌱', color: '#8FB996' },
+        { id: 'greenhouse', name: 'Greenhouse', emoji: '🏡', color: '#B5E7D3' },
+        { id: 'orchard', name: 'Fruit & Orchard', emoji: '🍎', color: '#E5989B' },
+        { id: 'bees', name: 'Beekeeping', emoji: '🐝', color: '#FFE5B4' },
+        { id: 'livestock', name: 'Sheep & Goats', emoji: '🐑', color: '#C9B8E4' },
+        { id: 'birds', name: 'Birds', emoji: '🐓', color: '#FFB4A2' },
+        { id: 'farmstand', name: 'Farm Stand', emoji: '🏪', color: '#8FB996' },
+        { id: 'property', name: 'Property', emoji: '🔧', color: '#D68A7F' },
+        { id: 'household', name: 'Household', emoji: '🏠', color: '#9B5D6B' }
+      ];
+
+      const defaultGeofences = [
+        {
+          id: 'farmstand',
+          name: 'Farm Stand',
+          moduleId: 'farmstand',
+          latitude: 0,
+          longitude: 0,
+          radius: 50,
+          emoji: '🏪',
+          enabled: true,
+          reminders: ['Check cash box', 'Restock sold items', 'Collect money']
+        },
+        {
+          id: 'coop',
+          name: 'Chicken Coop',
+          moduleId: 'birds',
+          latitude: 0,
+          longitude: 0,
+          radius: 30,
+          emoji: '🐓',
+          enabled: true,
+          reminders: ['Collect eggs', 'Check water', 'Count chickens']
+        },
+        {
+          id: 'barn',
+          name: 'Barn',
+          moduleId: 'livestock',
+          latitude: 0,
+          longitude: 0,
+          radius: 40,
+          emoji: '🐑',
+          enabled: true,
+          reminders: ['Check animals', 'Feed livestock', 'Look for any issues']
+        }
+      ];
 
       useEffect(() => {
-        const unsubsMsg = db.collection('messages').orderBy('timestamp', 'asc').limit(50)
-          .onSnapshot(snap => {
-            setMessages(snap.docs.map(doc => doc.data()));
-            setConnStatus('Online');
-          }, () => setConnStatus('Connection Error'));
-
-        const unsubsKnow = db.collection('knowledge').orderBy('timestamp', 'desc')
-          .onSnapshot(snap => setKnowledge(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-
-        return () => { unsubsMsg(); unsubsKnow(); };
+        loadData();
+        initSpeechRecognition();
+        initSpeechSynthesis();
+        requestLocation();
+        
+        // Load voice preference
+        const savedVoiceEnabled = localStorage.getItem('voiceEnabled');
+        if (savedVoiceEnabled === 'true') {
+          setVoiceEnabled(true);
+        }
+        
+        const hasGreeted = localStorage.getItem('hasGreeted');
+        if (!hasGreeted) {
+          setTimeout(() => {
+            const greeting = "Welcome to your homestead! Tell me what's happening on the farm today, and I'll help you keep track of everything. You can type or tap the microphone to speak!";
+            addMessage('assistant', greeting);
+            speak(greeting);
+            localStorage.setItem('hasGreeted', 'true');
+          }, 1000);
+        }
       }, []);
 
-      useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+      useEffect(() => {
+        const unsubscribe = db.collection('homesteads').doc('family').collection('messages')
+          .orderBy('timestamp', 'asc')
+          .onSnapshot((snapshot) => {
+            const msgs = [];
+            snapshot.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
+            if (msgs.length > 0) setMessages(msgs);
+          });
+        return () => unsubscribe();
+      }, []);
 
-      const handleImage = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onloadend = () => setSelectedImage(reader.result);
-          reader.readAsDataURL(file);
+      useEffect(() => {
+        const unsubscribe = db.collection('homesteads').doc('family').collection('tasks')
+          .onSnapshot((snapshot) => {
+            const tasksData = {};
+            snapshot.forEach(doc => tasksData[doc.id] = doc.data().items || []);
+            setTasks(tasksData);
+          });
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        const unsubscribe = db.collection('homesteads').doc('family').collection('photos')
+          .onSnapshot((snapshot) => {
+            const photosData = {};
+            snapshot.forEach(doc => photosData[doc.id] = doc.data().items || []);
+            setPhotos(photosData);
+          });
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        db.collection('homesteads').doc('family').onSnapshot(doc => {
+          if (doc.exists) {
+            if (doc.data().profile) setProfile(doc.data().profile);
+            if (doc.data().geofences) setGeofences(doc.data().geofences);
+            else setGeofences(defaultGeofences);
+          } else {
+            setGeofences(defaultGeofences);
+          }
+        });
+      }, []);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messages]);
+
+      async function loadData() {
+        try {
+          const doc = await db.collection('homesteads').doc('family').get();
+          if (doc.exists && doc.data().profile) {
+            setProfile(doc.data().profile);
+          }
+        } catch (e) {
+          console.error('Load error:', e);
         }
-      };
+      }
 
-      const sendMessage = async () => {
-        if ((!inputText.trim() && !selectedImage) || loading) return;
-        setLoading(true);
-        const userPrompt = inputText;
-        const currentImg = selectedImage;
-        setInputText('');
-        setSelectedImage(null);
+      async function requestLocation() {
+        if (!navigator.geolocation) return;
+        
+        try {
+          if ('Notification' in window && Notification.permission === 'default') {
+            await Notification.requestPermission();
+          }
+
+          const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject);
+          });
+          
+          const loc = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          };
+          setCurrentLocation(loc);
+          loadWeather(loc);
+          startLocationTracking();
+        } catch (e) {
+          console.error('Location error:', e);
+        }
+      }
+
+      function startLocationTracking() {
+        if (locationWatchId.current) return;
+        
+        locationWatchId.current = navigator.geolocation.watchPosition(
+          (position) => {
+            const newLoc = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            };
+            setCurrentLocation(newLoc);
+            checkGeofences(newLoc);
+          },
+          (error) => console.log('Location error:', error),
+          { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+        );
+      }
+
+      async function loadWeather(location) {
+        if (!location) return;
+        
+        try {
+          const response = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=auto`
+          );
+          const data = await response.json();
+          setWeather(data);
+        } catch (e) {
+          console.error('Weather error:', e);
+        }
+      }
+
+      function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371e3;
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                  Math.cos(φ1) * Math.cos(φ2) *
+                  Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+        return R * c;
+      }
+
+      function checkGeofences(location) {
+        geofences.forEach(geofence => {
+          if (!geofence.enabled || geofence.latitude === 0) return;
+          
+          const distance = calculateDistance(
+            location.latitude,
+            location.longitude,
+            geofence.latitude,
+            geofence.longitude
+          );
+
+          if (distance <= geofence.radius) {
+            const lastReminder = localStorage.getItem(`geofence-${geofence.id}-last`);
+            const now = Date.now();
+            const cooldown = 30 * 60 * 1000;
+            
+            if (!lastReminder || (now - parseInt(lastReminder)) > cooldown) {
+              triggerGeofenceReminder(geofence);
+              localStorage.setItem(`geofence-${geofence.id}-last`, now.toString());
+            }
+          }
+        });
+      }
+
+      function triggerGeofenceReminder(geofence) {
+        const moduleTasks = tasks[geofence.moduleId] || [];
+        const pendingTasks = moduleTasks.filter(t => !t.completed);
+        
+        const reminders = [
+          ...geofence.reminders,
+          ...pendingTasks.slice(0, 2).map(t => `Task: ${t.text}`)
+        ];
+
+        setActiveReminders(reminders);
+
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const notification = new Notification(`${geofence.emoji} You're near ${geofence.name}!`, {
+            body: reminders[0],
+            tag: `geofence-${geofence.id}`
+          });
+
+          notification.onclick = () => window.focus();
+        }
+
+        const reminderMsg = `Hey! I noticed you're near the ${geofence.name}. Here's what you might want to check: ${reminders.slice(0, 2).join(', ')}`;
+        addMessage('assistant', reminderMsg);
+        speak(reminderMsg);
+      }
+
+      async function setGeofenceAtCurrentLocation(name, emoji, moduleId) {
+        if (!currentLocation) {
+          alert('Location not available. Please enable location access.');
+          return;
+        }
+
+        const newGeofence = {
+          id: `custom-${Date.now()}`,
+          name,
+          moduleId,
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          radius: 40,
+          emoji,
+          enabled: true,
+          reminders: [`Check ${name}`, 'Review any pending tasks']
+        };
+
+        const updatedGeofences = geofences.map(g => 
+          g.name === name ? newGeofence : g
+        );
+
+        if (!geofences.find(g => g.name === name)) {
+          updatedGeofences.push(newGeofence);
+        }
 
         try {
-          let imageUrl = null;
-          if (currentImg) {
-            const fileName = `homestead_${Date.now()}.jpg`;
-            const storageRef = storage.ref().child(`photos/${fileName}`);
-            const snapshot = await storageRef.putString(currentImg, 'data_url');
-            imageUrl = await snapshot.ref.getDownloadURL();
-          }
-
-          await db.collection('messages').add({
-            role: 'user', content: userPrompt, image: imageUrl, timestamp: Date.now()
-          });
-
-          const knowledgeBase = knowledge.map(k => k.fact).join(". ");
-          const parts = [{ text: `CONTEXT: ${knowledgeBase}. USER PROMPT: ${userPrompt}` }];
+          await db.collection('homesteads').doc('family').set({
+            geofences: updatedGeofences
+          }, { merge: true });
           
-          if (currentImg) {
-            parts.push({ inlineData: { data: currentImg.split(',')[1], mimeType: "image/jpeg" } });
+          alert(`Geofence set for ${name}! You'll get reminders when you're within 40 meters.`);
+        } catch (e) {
+          console.error('Error saving geofence:', e);
+        }
+      }
+
+      useEffect(() => {
+        return () => {
+          if (locationWatchId.current) {
+            navigator.geolocation.clearWatch(locationWatchId.current);
           }
+        };
+      }, []);
 
-          const result = await model.generateContent({ contents: [{ role: "user", parts }] });
-          const responseText = result.response.text();
+      function initSpeechRecognition() {
+        if (!('webkitSpeechRecognition' in window)) return;
+        
+        const recognition = new webkitSpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        
+        recognition.onresult = (event) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+          
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript + ' ';
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+          
+          setInputText(finalTranscript + interimTranscript);
+        };
+        
+        recognition.onerror = (event) => {
+          console.error('Speech recognition error:', event.error);
+          setIsRecording(false);
+        };
+        
+        recognition.onend = () => {
+          setIsRecording(false);
+        };
+        
+        recognitionRef.current = recognition;
+      }
 
-          await db.collection('messages').add({
-            role: 'assistant', content: responseText, timestamp: Date.now()
+      function initSpeechSynthesis() {
+        speechSynthRef.current = window.speechSynthesis;
+        
+        // Load voices
+        const loadVoices = () => {
+          const voices = speechSynthRef.current.getVoices();
+          setAvailableVoices(voices);
+          
+          // Try to select a good default voice
+          const savedVoice = localStorage.getItem('preferredVoice');
+          if (savedVoice) {
+            const voice = voices.find(v => v.name === savedVoice);
+            if (voice) setSelectedVoice(voice);
+          } else {
+            // Default to first English voice that sounds natural
+            const goodVoice = voices.find(v => 
+              v.lang.startsWith('en') && 
+              (v.name.includes('Natural') || v.name.includes('Enhanced') || v.name.includes('Premium') || v.name.includes('Google'))
+            ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
+            
+            setSelectedVoice(goodVoice);
+          }
+        };
+        
+        // Load voices immediately
+        loadVoices();
+        
+        // Voices might load async on some browsers
+        if (speechSynthRef.current.onvoiceschanged !== undefined) {
+          speechSynthRef.current.onvoiceschanged = loadVoices;
+        }
+      }
+
+      function toggleRecording() {
+        if (!recognitionRef.current) {
+          alert('Voice recognition not supported on this device');
+          return;
+        }
+        
+        if (isRecording) {
+          recognitionRef.current.stop();
+          setIsRecording(false);
+        } else {
+          recognitionRef.current.start();
+          setIsRecording(true);
+        }
+      }
+
+      function speak(text) {
+        if (!speechSynthRef.current || !voiceEnabled) return;
+        
+        speechSynthRef.current.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        
+        // Use selected voice if available
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+        }
+        
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+        
+        utterance.onstart = () => setIsAISpeaking(true);
+        utterance.onend = () => setIsAISpeaking(false);
+        
+        speechSynthRef.current.speak(utterance);
+      }
+
+      function changeVoice(voice) {
+        setSelectedVoice(voice);
+        setVoiceEnabled(true); // Enable voice when user selects one
+        localStorage.setItem('preferredVoice', voice.name);
+        localStorage.setItem('voiceEnabled', 'true');
+        
+        // Test the voice
+        const testUtterance = new SpeechSynthesisUtterance("Hello! This is how I'll sound.");
+        testUtterance.voice = voice;
+        speechSynthRef.current.speak(testUtterance);
+      }
+
+      function toggleVoice() {
+        const newState = !voiceEnabled;
+        setVoiceEnabled(newState);
+        localStorage.setItem('voiceEnabled', newState.toString());
+        
+        if (newState && !selectedVoice && availableVoices.length > 0) {
+          // If enabling voice for first time, open selector
+          setShowVoiceSelector(true);
+        }
+      }
+
+      function stopSpeaking() {
+        if (speechSynthRef.current) {
+          speechSynthRef.current.cancel();
+          setIsAISpeaking(false);
+        }
+      }
+
+      async function addMessage(role, content, metadata = {}) {
+        const message = {
+          role,
+          content,
+          timestamp: Date.now(),
+          ...metadata
+        };
+        
+        try {
+          await db.collection('homesteads').doc('family').collection('messages').add(message);
+        } catch (e) {
+          console.error('Message save error:', e);
+          setMessages(prev => [...prev, message]);
+        }
+      }
+
+      async function sendMessage() {
+        if (!inputText.trim() && !isRecording) return;
+        
+        const userMessage = inputText.trim();
+        setInputText('');
+        
+        if (isRecording) {
+          recognitionRef.current.stop();
+          setIsRecording(false);
+        }
+        
+        if (!userMessage) return;
+        
+        const lowerMsg = userMessage.toLowerCase();
+        if (lowerMsg.includes('set geofence') || lowerMsg.includes('geofence here') || lowerMsg.includes('location reminder')) {
+          let foundGeofence = null;
+          geofences.forEach(gf => {
+            if (lowerMsg.includes(gf.name.toLowerCase()) || lowerMsg.includes(gf.moduleId)) {
+              foundGeofence = gf;
+            }
           });
 
-          const learnRes = await model.generateContent(`Extract specific permanent facts about the homestead from: "${userPrompt}". Reply ONLY with the facts or "None".`);
-          const fact = learnRes.response.text();
-          if (fact.toLowerCase() !== 'none' && fact.length > 3) {
-            await db.collection('knowledge').add({ fact, timestamp: Date.now() });
+          if (foundGeofence) {
+            await setGeofenceAtCurrentLocation(foundGeofence.name, foundGeofence.emoji, foundGeofence.moduleId);
+            const response = `Great! I've set a geofence for ${foundGeofence.name}. You'll get reminders when you're within ${foundGeofence.radius} meters next time!`;
+            await addMessage('user', userMessage);
+            await addMessage('assistant', response);
+            speak(response);
+            return;
+          }
+        }
+        
+        await addMessage('user', userMessage);
+        
+        setIsLoading(true);
+        await getAIResponse(userMessage);
+        setIsLoading(false);
+      }
+
+      async function getAIResponse(userMessage) {
+        try {
+          let systemContext = `You are a helpful homestead assistant. You help organize tasks, track inventory, identify problems, and give advice about farming, animals, crops, and homesteading.
+
+IMPORTANT INSTRUCTIONS:
+1. Extract actionable tasks from user messages and remember them
+2. Track inventory mentions (eggs collected, feed used, etc.)
+3. Identify problems and create tasks to address them
+4. Be conversational and friendly
+5. Ask follow-up questions when needed
+6. Give practical, specific advice
+7. Keep responses concise but helpful (2-3 sentences usually)
+8. When user says "set geofence" or similar, acknowledge you'll remind them when they return to that location
+
+GEOFENCING: If user mentions setting a geofence or location reminder, respond positively and tell them the system will remind them when they're near that location next time.`;
+
+          if (profile) {
+            systemContext += `\n\nHomestead Profile:
+- Location: ${profile.location}
+- Zone: ${profile.zone}
+- Animals: ${profile.animals}
+- Crops: ${profile.crops}`;
           }
 
-        } catch (error) {
-          console.error("AI FAIL:", error);
-          await db.collection('messages').add({
-            role: 'assistant error-bubble', content: `⚠️ Error: ${error.message}`, timestamp: Date.now()
-          });
-        } finally { setLoading(false); }
-      };
+          if (weather) {
+            systemContext += `\n\nCurrent Weather: ${Math.round(weather.current.temperature_2m)}°F`;
+          }
 
+          const recentMessages = messages.slice(-6).map(m => 
+            `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`
+          ).join('\n\n');
+
+          const fullPrompt = `${systemContext}\n\nConversation so far:\n${recentMessages}\n\nUser: ${userMessage}\n\nAssistant:`;
+
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=AIzaSyD4LPerIJtGjM3LMvbvjqGvqRAevk46oWo`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: fullPrompt
+                }]
+              }],
+              generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 500
+              }
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`API returned ${response.status}: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          
+          // Better error handling for Gemini response
+          if (!data.candidates || data.candidates.length === 0) {
+            throw new Error('No response from AI');
+          }
+          
+          const aiResponse = data.candidates[0].content.parts[0].text;
+          
+          await addMessage('assistant', aiResponse);
+          speak(aiResponse);
+          await extractAndCreateTasks(userMessage, aiResponse);
+          
+        } catch (e) {
+          console.error('AI error:', e);
+          console.error('Full error details:', e.message);
+          const errorMsg = "Sorry, I had trouble connecting. Please try again in a moment.";
+          await addMessage('assistant', errorMsg);
+          speak(errorMsg);
+        }
+      }
+
+      async function extractAndCreateTasks(userMsg, aiMsg) {
+        const taskKeywords = ['need to', 'should', 'must', 'have to', 'fix', 'check', 'water', 'feed', 'collect', 'monitor'];
+        const combined = userMsg.toLowerCase() + ' ' + aiMsg.toLowerCase();
+        
+        for (const module of modules) {
+          const moduleName = module.name.toLowerCase();
+          const moduleKeywords = [moduleName, module.id];
+          
+          const mentionsModule = moduleKeywords.some(kw => combined.includes(kw));
+          const hasTasks = taskKeywords.some(kw => combined.includes(kw));
+          
+          if (mentionsModule && hasTasks) {
+            const sentences = (userMsg + ' ' + aiMsg).split(/[.!?]/);
+            for (const sentence of sentences) {
+              const lower = sentence.toLowerCase();
+              if (moduleKeywords.some(kw => lower.includes(kw)) && 
+                  taskKeywords.some(kw => lower.includes(kw))) {
+                
+                const task = {
+                  id: Date.now() + Math.random(),
+                  text: sentence.trim(),
+                  completed: false,
+                  created: new Date().toISOString(),
+                  extractedFrom: 'chat'
+                };
+                
+                const moduleTasks = tasks[module.id] || [];
+                const updatedTasks = [...moduleTasks, task];
+                
+                await db.collection('homesteads').doc('family').collection('tasks')
+                  .doc(module.id).set({ items: updatedTasks });
+                
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      async function handlePhotoUpload(file) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const photoData = e.target.result;
+          
+          await addMessage('user', '[Photo uploaded]', { hasPhoto: true, photoData });
+          
+          setIsLoading(true);
+          try {
+            const base64Data = photoData.split(',')[1];
+            
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyD4LPerIJtGjM3LMvbvjqGvqRAevk46oWo`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{
+                  parts: [
+                    {
+                      text: 'Analyze this photo from my homestead. What do you see? Is there anything concerning? What should I do? Be specific and practical.'
+                    },
+                    {
+                      inline_data: {
+                        mime_type: 'image/jpeg',
+                        data: base64Data
+                      }
+                    }
+                  ]
+                }],
+                generationConfig: {
+                  temperature: 0.4,
+                  maxOutputTokens: 800
+                }
+              })
+            });
+
+            if (!response.ok) {
+              throw new Error(`API returned ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            if (!data.candidates || data.candidates.length === 0) {
+              throw new Error('No response from AI for photo');
+            }
+            
+            const analysis = data.candidates[0].content.parts[0].text;
+            
+            await addMessage('assistant', analysis, { isPhotoAnalysis: true });
+            speak(analysis);
+            
+          } catch (e) {
+            console.error('Photo analysis error:', e);
+            const errorMsg = "Sorry, I couldn't analyze that photo. Please try again.";
+            await addMessage('assistant', errorMsg);
+          }
+          setIsLoading(false);
+        };
+        reader.readAsDataURL(file);
+      }
+
+      // Render
       return h('div', { className: 'chat-container' },
-        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 flex justify-between items-center shadow-sm' },
-          h('div', null,
-            h('h1', { className: 'text-xl font-bold text-amber-900' }, '🏡 Homestead Helper'),
-            h('span', { className: 'text-[10px] font-bold uppercase tracking-wider text-amber-700' }, connStatus)
-          ),
-          h('button', { 
-            onClick: () => setShowKnowledge(true),
-            className: 'bg-white border-2 border-amber-900 p-2 rounded-xl text-xs font-bold'
-          }, '🧠 BRAIN')
-        ),
-
-        h('div', { className: 'messages-container' },
-          messages.map((m, i) => h('div', { key: i, className: `message-bubble ${m.role}` },
-            m.image && h('img', { src: m.image, className: 'w-full rounded-lg mb-2 border border-amber-900' }),
-            h('p', { className: 'text-sm' }, m.content)
-          )),
-          loading && h('div', { className: 'assistant message-bubble' }, 
-            h('span', { className: 'loading-dot' }), h('span', { className: 'loading-dot' }), h('span', { className: 'loading-dot' })
-          ),
-          h('div', { ref: messagesEndRef })
-        ),
-
-        h('div', { className: 'p-4 bg-white border-t-2 border-amber-900' },
-          selectedImage && h('div', { className: 'relative inline-block mb-2' },
-            h('img', { src: selectedImage, className: 'h-20 w-20 object-cover rounded-lg border-2 border-amber-400' }),
-            h('button', { onClick: () => setSelectedImage(null), className: 'absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs' }, '×')
-          ),
-          h('div', { className: 'flex gap-2' },
-            h('label', { className: 'p-3 bg-amber-50 rounded-xl border-2 border-amber-900 cursor-pointer hover:bg-amber-100 transition' },
-              h('span', null, '📷'),
-              h('input', { type: 'file', accept: 'image/*', className: 'hidden', onChange: handleImage })
+        // Header
+        h('header', { className: 'folk-header p-4 relative' },
+          h('div', { className: 'flex items-center justify-between max-w-4xl mx-auto' },
+            h('div', { className: 'flex items-center gap-3' },
+              h('div', { className: 'text-4xl', style: { filter: 'drop-shadow(2px 2px 0 rgba(139, 111, 71, 0.3))' } }, '🏡'),
+              h('div', null,
+                h('h1', { 
+                  className: 'text-2xl font-bold', 
+                  style: { 
+                    fontFamily: "'Crimson Text', serif",
+                    color: '#8B6F47',
+                    textShadow: '2px 2px 0 rgba(255, 255, 255, 0.5)',
+                    letterSpacing: '1px'
+                  } 
+                }, 'Homestead Helper'),
+                weather && h('p', { 
+                  className: 'text-sm',
+                  style: { color: '#9B5D6B', fontWeight: 600 }
+                }, `${Math.round(weather.current.temperature_2m)}°F`)
+              )
             ),
-            h('input', {
-              value: inputText,
-              onChange: (e) => setInputText(e.target.value),
-              onKeyPress: (e) => e.key === 'Enter' && sendMessage(),
-              className: 'flex-1 p-3 border-2 border-amber-100 rounded-xl outline-none focus:border-amber-400',
-              placeholder: 'Ask a question or upload a photo...'
-            }),
-            h('button', { 
-              onClick: sendMessage,
-              className: 'bg-amber-800 text-white px-5 py-2 rounded-xl font-bold hover:bg-amber-900' 
-            }, 'Send')
+            h('div', { className: 'flex items-center gap-2' },
+              activeReminders.length > 0 && h('div', { className: 'relative' },
+                h('button', {
+                  className: 'folk-button p-2',
+                  style: { 
+                    background: 'linear-gradient(135deg, #FFB4A2, #E5989B)',
+                    color: '#8B6F47',
+                    borderColor: '#8B6F47'
+                  },
+                  onClick: () => setActiveReminders([])
+                }, '🔔'),
+                h('span', { className: 'folk-badge absolute -top-2 -right-2' }, activeReminders.length)
+              ),
+              h('button', {
+                onClick: toggleVoice,
+                className: 'folk-button p-2',
+                style: voiceEnabled ? { 
+                  background: '#8FB996',
+                  color: '#FFF8E7',
+                  borderColor: '#8B6F47'
+                } : {
+                  background: '#E5E5E5',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                },
+                title: voiceEnabled ? 'Voice ON - Click to disable' : 'Voice OFF - Click to enable'
+              }, voiceEnabled ? '🔊' : '🔇'),
+              voiceEnabled && h('button', {
+                onClick: () => setShowVoiceSelector(true),
+                className: 'folk-button p-2',
+                style: { 
+                  background: '#FFE5B4',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                },
+                title: 'Change voice'
+              }, '🎤'),
+              h('button', {
+                onClick: () => setShowGeofences(true),
+                className: 'folk-button p-2',
+                style: { 
+                  background: '#B5E7D3',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                }
+              }, '📍'),
+              h('button', {
+                onClick: () => setShowOrganized(true),
+                className: 'folk-button p-2',
+                style: { 
+                  background: '#C9B8E4',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                }
+              }, '📊')
+            )
           )
         ),
 
-        h('div', { className: `slide-panel ${showKnowledge ? 'open' : ''}` },
-          h('div', { className: 'p-6' },
-            h('div', { className: 'flex justify-between items-center mb-6' },
-              h('h2', { className: 'text-xl font-bold text-amber-900' }, 'Knowledge Base'),
-              h('button', { onClick: () => setShowKnowledge(false), className: 'text-2xl' }, '✕')
+        // Active Reminders Banner
+        activeReminders.length > 0 && h('div', { 
+          className: 'px-4 py-3',
+          style: { 
+            background: 'linear-gradient(to right, #FFE5B4, #FFB4A2)',
+            borderBottom: '3px solid #8B6F47'
+          }
+        },
+          h('div', { className: 'max-w-4xl mx-auto flex items-start justify-between' },
+            h('div', null,
+              h('p', { 
+                className: 'font-bold mb-2',
+                style: { color: '#8B6F47', fontFamily: "'Crimson Text', serif", fontSize: '18px' }
+              }, '📍 You\'re nearby!'),
+              h('ul', { className: 'text-sm space-y-1', style: { color: '#9B5D6B' } },
+                ...activeReminders.slice(0, 3).map((reminder, i) =>
+                  h('li', { key: i }, `• ${reminder}`)
+                )
+              )
             ),
-            h('div', { className: 'flex flex-col gap-3' },
-              knowledge.length === 0 && h('p', { className: 'text-xs italic' }, 'No facts learned yet...'),
-              knowledge.map(k => h('div', { key: k.id, className: 'p-3 bg-white border-2 border-amber-100 rounded-lg text-sm shadow-sm' }, k.fact))
+            h('button', {
+              onClick: () => setActiveReminders([]),
+              className: 'folk-button px-3 py-1 text-sm',
+              style: { 
+                background: '#E5989B',
+                color: '#8B6F47',
+                borderColor: '#8B6F47'
+              }
+            }, '✕')
+          )
+        ),
+
+        // Messages
+        h('div', { className: 'messages-container' },
+          messages.map((msg, i) =>
+            h('div', {
+              key: msg.id || i,
+              className: `mb-6 ${msg.role === 'user' ? 'text-right' : 'text-left'}`
+            },
+              h('div', {
+                className: `message-bubble ${msg.role} inline-block max-w-[85%] p-4`,
+                style: msg.role === 'user' ? {
+                  background: 'linear-gradient(135deg, #FFB4A2, #E5989B)',
+                  borderColor: '#8B6F47',
+                  color: '#8B6F47'
+                } : {
+                  background: 'linear-gradient(135deg, #FFF8E7, #FFE5B4)',
+                  borderColor: '#8B6F47',
+                  color: '#4A5568'
+                }
+              },
+                msg.hasPhoto && h('div', { className: 'mb-3' },
+                  h('img', { 
+                    src: msg.photoData, 
+                    className: 'max-w-full rounded-xl',
+                    style: { border: '3px solid #8B6F47' },
+                    alt: 'Photo' 
+                  })
+                ),
+                h('p', { 
+                  className: 'whitespace-pre-wrap',
+                  style: { fontFamily: "'Josefin Sans', sans-serif", lineHeight: '1.6' }
+                }, msg.content),
+                msg.isPhotoAnalysis && h('span', { 
+                  className: 'text-xs opacity-75 ml-2',
+                  style: { fontWeight: 600 }
+                }, '📸 Photo Analysis')
+              ),
+              msg.role === 'assistant' && i === messages.length - 1 && isAISpeaking &&
+                h('div', { 
+                  className: 'mt-2 text-xs inline-flex items-center gap-2 px-3 py-1 rounded-full',
+                  style: { background: '#E5989B', color: '#8B6F47' }
+                }, '🔊 Speaking...')
+            )
+          ),
+          
+          isLoading && h('div', { className: 'text-left mb-4' },
+            h('div', { 
+              className: 'inline-block p-4 rounded-2xl',
+              style: { 
+                background: 'linear-gradient(135deg, #FFF8E7, #FFE5B4)',
+                border: '2.5px solid #8B6F47'
+              }
+            },
+              h('div', { className: 'flex gap-1 items-end' },
+                h('span', { className: 'voice-wave' }),
+                h('span', { className: 'voice-wave' }),
+                h('span', { className: 'voice-wave' }),
+                h('span', { className: 'voice-wave' }),
+                h('span', { className: 'voice-wave' })
+              )
+            )
+          ),
+          
+          h('div', { ref: messagesEndRef })
+        ),
+
+        // Input Area
+        h('div', { 
+          className: 'p-4',
+          style: { 
+            background: 'linear-gradient(to top, #FFE5B4, #FFF8E7)',
+            borderTop: '4px solid #8B6F47'
+          }
+        },
+          h('div', { className: 'max-w-4xl mx-auto' },
+            isRecording && h('div', { className: 'mb-3 text-center' },
+              h('div', { 
+                className: 'inline-flex items-center gap-2 px-4 py-2 rounded-full',
+                style: { background: '#E5989B', border: '2px solid #8B6F47' }
+              },
+                h('div', { className: 'w-3 h-3 rounded-full recording-indicator', style: { background: '#9B5D6B' } }),
+                h('span', { className: 'text-sm font-semibold', style: { color: '#8B6F47' } }, 'Listening...')
+              )
+            ),
+            
+            h('div', { className: 'flex items-end gap-2' },
+              h('button', {
+                onClick: () => fileInputRef.current?.click(),
+                className: 'folk-button p-3',
+                style: { 
+                  background: '#A8DADC',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                },
+                title: 'Upload photo'
+              }, '📷'),
+              
+              h('input', {
+                ref: fileInputRef,
+                type: 'file',
+                accept: 'image/*',
+                capture: 'environment',
+                className: 'hidden',
+                onChange: (e) => {
+                  if (e.target.files?.[0]) {
+                    handlePhotoUpload(e.target.files[0]);
+                    e.target.value = '';
+                  }
+                }
+              }),
+              
+              h('div', { className: 'flex-1' },
+                h('textarea', {
+                  value: inputText,
+                  onChange: (e) => setInputText(e.target.value),
+                  onKeyPress: (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  },
+                  placeholder: isRecording ? 'Listening to you...' : 'Tell me what\'s happening...',
+                  rows: 1,
+                  className: 'w-full px-4 py-3 resize-none rounded-2xl',
+                  style: {
+                    border: '2.5px solid #8B6F47',
+                    background: '#FFF8E7',
+                    color: '#4A5568',
+                    fontFamily: "'Josefin Sans', sans-serif",
+                    fontSize: '16px'
+                  },
+                  disabled: isRecording
+                })
+              ),
+              
+              h('button', {
+                onClick: toggleRecording,
+                className: `folk-button p-3 ${isRecording ? 'recording-indicator' : ''}`,
+                style: isRecording ? {
+                  background: '#E5989B',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                } : {
+                  background: '#FFB4A2',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                },
+                title: isRecording ? 'Stop recording' : 'Start recording'
+              }, isRecording ? '⏹️' : '🎤'),
+              
+              h('button', {
+                onClick: sendMessage,
+                disabled: !inputText.trim() || isLoading,
+                className: 'folk-button p-3',
+                style: inputText.trim() && !isLoading ? {
+                  background: 'linear-gradient(135deg, #8FB996, #B5E7D3)',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                } : {
+                  background: '#E5E5E5',
+                  color: '#999',
+                  borderColor: '#CCC',
+                  cursor: 'not-allowed'
+                }
+              }, '➤')
+            ),
+            
+            isAISpeaking && h('button', {
+              onClick: stopSpeaking,
+              className: 'mt-3 w-full py-3 folk-button text-sm font-semibold',
+              style: {
+                background: '#E5989B',
+                color: '#8B6F47',
+                borderColor: '#8B6F47'
+              }
+            }, '🔇 Stop Speaking')
+          )
+        ),
+
+        // Organized View Panel
+        showOrganized && h('div', { className: 'slide-panel' + (showOrganized ? ' open' : '') },
+          h('div', { className: 'h-full flex flex-col' },
+            h('div', { 
+              className: 'p-4 flex items-center justify-between',
+              style: { 
+                background: 'linear-gradient(to right, #C9B8E4, #B5E7D3)',
+                borderBottom: '4px solid #8B6F47'
+              }
+            },
+              h('h2', { 
+                className: 'text-xl font-bold',
+                style: { fontFamily: "'Crimson Text', serif", color: '#8B6F47' }
+              }, '📊 Organized View'),
+              h('button', {
+                onClick: () => setShowOrganized(false),
+                className: 'folk-button px-4 py-2',
+                style: {
+                  background: '#E5989B',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                }
+              }, 'Close')
+            ),
+            
+            h('div', { className: 'flex-1 overflow-y-auto p-4' },
+              h('div', { className: 'mb-6' },
+                h('h3', { 
+                  className: 'text-lg font-semibold mb-3',
+                  style: { fontFamily: "'Crimson Text', serif", color: '#8B6F47' }
+                }, 'Tasks by Module'),
+                h('div', { className: 'space-y-3' },
+                  ...modules.map(module => {
+                    const moduleTasks = tasks[module.id] || [];
+                    const pending = moduleTasks.filter(t => !t.completed);
+                    if (pending.length === 0) return null;
+                    
+                    return h('div', {
+                      key: module.id,
+                      className: 'folk-card p-4',
+                      style: { background: module.color + '40' }
+                    },
+                      h('div', { className: 'flex items-center gap-2 mb-2' },
+                        h('span', { className: 'text-2xl' }, module.emoji),
+                        h('h4', { 
+                          className: 'font-semibold flex-1',
+                          style: { color: '#8B6F47', fontFamily: "'Crimson Text', serif" }
+                        }, module.name),
+                        h('span', { className: 'folk-badge' }, pending.length)
+                      ),
+                      h('ul', { className: 'space-y-1' },
+                        ...pending.slice(0, 3).map(task =>
+                          h('li', {
+                            key: task.id,
+                            className: 'text-sm',
+                            style: { color: '#4A5568' }
+                          }, `• ${task.text}`)
+                        )
+                      ),
+                      pending.length > 3 && h('p', { 
+                        className: 'text-xs mt-2',
+                        style: { color: '#9B5D6B' }
+                      }, `+${pending.length - 3} more`)
+                    );
+                  }).filter(Boolean)
+                )
+              ),
+              
+              Object.keys(photos).length > 0 && h('div', null,
+                h('h3', { 
+                  className: 'text-lg font-semibold mb-3',
+                  style: { fontFamily: "'Crimson Text', serif", color: '#8B6F47' }
+                }, 'Recent Photos'),
+                h('div', { className: 'grid grid-cols-2 gap-3' },
+                  ...Object.values(photos).flat().slice(-6).map((photo, i) =>
+                    h('img', {
+                      key: i,
+                      src: photo.data,
+                      className: 'w-full h-32 object-cover rounded-xl',
+                      style: { border: '3px solid #8B6F47' },
+                      alt: 'Homestead photo'
+                    })
+                  )
+                )
+              )
+            )
+          )
+        ),
+
+        // Geofencing Panel
+        showGeofences && h('div', { className: 'fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4' },
+          h('div', { 
+            className: 'w-full max-w-2xl folk-card overflow-hidden',
+            style: { 
+              maxHeight: '85vh',
+              background: 'linear-gradient(135deg, #FFF8E7, #FFE5B4)'
+            }
+          },
+            h('div', { 
+              className: 'p-4 flex items-center justify-between',
+              style: { 
+                background: 'linear-gradient(to right, #B5E7D3, #8FB996)',
+                borderBottom: '3px solid #8B6F47'
+              }
+            },
+              h('h2', { 
+                className: 'text-xl font-bold',
+                style: { fontFamily: "'Crimson Text', serif", color: '#8B6F47' }
+              }, '📍 Location Reminders'),
+              h('button', {
+                onClick: () => setShowGeofences(false),
+                className: 'folk-button px-4 py-2',
+                style: {
+                  background: '#E5989B',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                }
+              }, 'Close')
+            ),
+            
+            h('div', { className: 'p-6 overflow-y-auto', style: { maxHeight: 'calc(85vh - 80px)' } },
+              h('p', { 
+                className: 'mb-4 text-sm',
+                style: { color: '#9B5D6B', fontWeight: 500 }
+              }, 'Walk to each location and tell me "set geofence here" in the chat, or click the button below!'),
+              
+              h('div', { className: 'space-y-4' },
+                ...geofences.map(geofence => {
+                  const distance = currentLocation && geofence.latitude !== 0 ? calculateDistance(
+                    currentLocation.latitude,
+                    currentLocation.longitude,
+                    geofence.latitude,
+                    geofence.longitude
+                  ) : null;
+
+                  return h('div', {
+                    key: geofence.id,
+                    className: 'folk-card p-4',
+                    style: { background: '#FFF8E7' }
+                  },
+                    h('div', { className: 'flex items-start justify-between mb-3' },
+                      h('div', { className: 'flex items-center gap-2' },
+                        h('span', { className: 'text-3xl' }, geofence.emoji),
+                        h('div', null,
+                          h('h3', { 
+                            className: 'font-bold',
+                            style: { fontFamily: "'Crimson Text', serif", color: '#8B6F47', fontSize: '18px' }
+                          }, geofence.name),
+                          h('p', { className: 'text-sm', style: { color: '#9B5D6B' } }, `Radius: ${geofence.radius}m`),
+                          geofence.latitude === 0 && h('p', { 
+                            className: 'text-xs mt-1',
+                            style: { color: '#D68A7F', fontWeight: 600 }
+                          }, '⚠️ Not set yet'),
+                          distance !== null && geofence.latitude !== 0 && h('p', { 
+                            className: 'text-xs mt-1',
+                            style: { color: '#8FB996', fontWeight: 600 }
+                          }, `📍 ${Math.round(distance)}m away`)
+                        )
+                      ),
+                      h('button', {
+                        onClick: () => setGeofenceAtCurrentLocation(geofence.name, geofence.emoji, geofence.moduleId),
+                        className: 'folk-button px-3 py-1 text-sm',
+                        style: {
+                          background: currentLocation ? '#B5E7D3' : '#E5E5E5',
+                          color: '#8B6F47',
+                          borderColor: '#8B6F47'
+                        },
+                        disabled: !currentLocation
+                      }, 'Set Here')
+                    ),
+                    h('div', { className: 'text-sm', style: { color: '#4A5568' } },
+                      h('p', { className: 'font-semibold mb-1' }, 'Reminders:'),
+                      ...geofence.reminders.map((reminder, i) =>
+                        h('p', { key: i, className: 'text-xs' }, `• ${reminder}`)
+                      )
+                    )
+                  );
+                })
+              ),
+              
+              !currentLocation && h('div', { 
+                className: 'mt-4 p-4 rounded-xl',
+                style: { 
+                  background: '#FFB4A2',
+                  border: '2.5px solid #8B6F47'
+                }
+              },
+                h('p', { className: 'text-sm', style: { color: '#8B6F47', fontWeight: 600 } },
+                  '📍 Enable location access to use geofencing.'
+                )
+              ),
+              
+              h('div', { 
+                className: 'mt-4 p-4 rounded-xl',
+                style: { 
+                  background: '#C9B8E4',
+                  border: '2.5px solid #8B6F47'
+                }
+              },
+                h('p', { className: 'text-sm', style: { color: '#8B6F47', fontWeight: 600 } },
+                  '💡 Tip: Say "set farm stand geofence" in the chat when you\'re at a location!'
+                )
+              )
+            )
+          )
+        ),
+
+        // Voice Selector Panel
+        showVoiceSelector && h('div', { className: 'fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4' },
+          h('div', { 
+            className: 'w-full max-w-md folk-card overflow-hidden',
+            style: { 
+              maxHeight: '70vh',
+              background: 'linear-gradient(135deg, #FFF8E7, #FFE5B4)'
+            }
+          },
+            h('div', { 
+              className: 'p-4 flex items-center justify-between',
+              style: { 
+                background: 'linear-gradient(to right, #FFE5B4, #FFB4A2)',
+                borderBottom: '3px solid #8B6F47'
+              }
+            },
+              h('h2', { 
+                className: 'text-xl font-bold',
+                style: { fontFamily: "'Crimson Text', serif", color: '#8B6F47' }
+              }, '🎤 Choose Voice'),
+              h('button', {
+                onClick: () => setShowVoiceSelector(false),
+                className: 'folk-button px-4 py-2',
+                style: {
+                  background: '#E5989B',
+                  color: '#8B6F47',
+                  borderColor: '#8B6F47'
+                }
+              }, 'Close')
+            ),
+            
+            h('div', { className: 'p-4 overflow-y-auto', style: { maxHeight: 'calc(70vh - 80px)' } },
+              h('p', { 
+                className: 'mb-4 text-sm',
+                style: { color: '#9B5D6B', fontWeight: 500 }
+              }, 'Try different voices! Some sound much better than others. Click to test, then close to save.'),
+              
+              selectedVoice && h('div', { 
+                className: 'mb-4 p-3 rounded-xl',
+                style: { background: '#B5E7D3', border: '2.5px solid #8B6F47' }
+              },
+                h('p', { 
+                  className: 'text-sm font-semibold',
+                  style: { color: '#8B6F47' }
+                }, `Current: ${selectedVoice.name}`),
+                h('p', { 
+                  className: 'text-xs mt-1',
+                  style: { color: '#4A5568' }
+                }, `Language: ${selectedVoice.lang}`)
+              ),
+              
+              h('div', { className: 'space-y-2' },
+                ...availableVoices.map((voice, i) => {
+                  const isSelected = selectedVoice && selectedVoice.name === voice.name;
+                  const isEnglish = voice.lang.startsWith('en');
+                  
+                  return h('button', {
+                    key: i,
+                    onClick: () => changeVoice(voice),
+                    className: 'w-full text-left p-3 rounded-xl folk-button transition-all',
+                    style: isSelected ? {
+                      background: '#8FB996',
+                      color: '#FFF8E7',
+                      borderColor: '#8B6F47'
+                    } : {
+                      background: isEnglish ? '#FFF8E7' : '#E5E5E5',
+                      color: '#4A5568',
+                      borderColor: '#8B6F47'
+                    }
+                  },
+                    h('div', { className: 'flex items-center justify-between' },
+                      h('div', null,
+                        h('p', { 
+                          className: 'font-semibold text-sm',
+                          style: { fontFamily: "'Josefin Sans', sans-serif" }
+                        }, voice.name),
+                        h('p', { className: 'text-xs opacity-75' }, 
+                          `${voice.lang} ${voice.localService ? '(Local)' : '(Online)'}`
+                        )
+                      ),
+                      isSelected && h('span', null, '✓')
+                    )
+                  );
+                })
+              ),
+              
+              availableVoices.length === 0 && h('div', { 
+                className: 'p-4 text-center',
+                style: { color: '#9B5D6B' }
+              },
+                h('p', null, 'Loading voices...')
+              )
             )
           )
         )
       );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(h(HomesteadHelperPro));
+    ReactDOM.render(
+      React.createElement(HomesteadHelperPro),
+      document.getElementById('root')
+    );
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => console.log('SW registered'))
+          .catch(err => console.log('SW failed'));
+      });
+    }
   </script>
 </body>
 </html>
