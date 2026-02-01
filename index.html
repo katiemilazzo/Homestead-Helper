@@ -4,32 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Homestead Helper Pro</title>
-  
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
-    :root { --folk-cream: #FFF8E7; --folk-brown: #8B6F47; --folk-mint: #B5E7D3; }
-    body { font-family: 'Josefin Sans', sans-serif; background: var(--folk-cream); margin: 0; overflow: hidden; }
+    :root { --cream: #FFF8E7; --brown: #8B6F47; --mint: #B5E7D3; }
+    body { font-family: 'Josefin Sans', sans-serif; background: var(--cream); margin: 0; }
     .chat-container { height: 100vh; display: flex; flex-direction: column; }
-    .messages-container { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 12px; }
-    .bubble { border: 2.5px solid var(--folk-brown); border-radius: 18px; padding: 12px; max-width: 85%; line-height: 1.4; }
-    .user { align-self: flex-end; background: var(--folk-mint); box-shadow: 4px 4px 0 rgba(0,0,0,0.05); }
-    .assistant { align-self: flex-start; background: white; box-shadow: -4px 4px 0 rgba(0,0,0,0.05); }
-    .error-banner { background: #fee2e2; color: #991b1b; padding: 8px; font-size: 11px; text-align: center; border-bottom: 2px solid #ef4444; }
+    .messages-container { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 10px; }
+    .bubble { border: 2px solid var(--brown); border-radius: 15px; padding: 12px; max-width: 85%; }
+    .user { align-self: flex-end; background: var(--mint); }
+    .assistant { align-self: flex-start; background: white; }
+    .error-log { font-family: monospace; font-size: 10px; background: #fee2e2; color: #991b1b; padding: 8px; border-radius: 5px; margin-top: 5px; overflow-wrap: break-word; }
   </style>
 </head>
 <body>
   <div id="root"></div>
-
   <script type="module">
     import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 
-    const firebaseConfig = {
+    const config = {
       apiKey: "AIzaSyDSR3019LmFBUSLUfr3xCNW67WpXKc9edQ",
       authDomain: "homestead-helper-fdc23.firebaseapp.com",
       projectId: "homestead-helper-fdc23",
@@ -38,79 +35,74 @@
       appId: "1:704725515036:web:4dd3427e51afe507b018d9"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(config);
     const db = firebase.firestore();
     const { useState, useEffect, useRef, createElement: h } = React;
 
-    function HomesteadApp() {
+    function App() {
       const [messages, setMessages] = useState([]);
-      const [inputText, setInputText] = useState('');
+      const [input, setInput] = useState('');
       const [loading, setLoading] = useState(false);
-      const [error, setError] = useState(null);
+      const [errorDetails, setErrorDetails] = useState(null);
       const scrollRef = useRef(null);
 
       useEffect(() => {
-        const unsub = db.collection('messages').orderBy('timestamp', 'asc').limit(50)
-          .onSnapshot(snap => {
-            setMessages(snap.docs.map(doc => doc.data()));
-            setError(null);
-          }, err => setError("Database Connection Error: " + err.message));
+        const unsub = db.collection('messages').orderBy('timestamp', 'asc').onSnapshot(s => {
+          setMessages(s.docs.map(d => d.data()));
+        });
         return () => unsub();
       }, []);
 
       useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-      const sendMessage = async () => {
-        if (!inputText.trim() || loading) return;
-        const prompt = inputText;
-        setInputText('');
+      const send = async () => {
+        if (!input.trim() || loading) return;
+        const prompt = input;
+        setInput('');
         setLoading(true);
+        setErrorDetails(null);
 
         try {
-          const genAI = new GoogleGenerativeAI(firebaseConfig.apiKey);
-          const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
-            systemInstruction: "You are the Homestead Helper for Airville, PA. You manage sheep (Ruth), goats (Salt, Pepper, Cumin), bees, and a garden. Provide warm, practical advice for Mike and the family."
-          });
+          const genAI = new GoogleGenerativeAI(config.apiKey);
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
+          // Log user message to DB
           await db.collection('messages').add({ role: 'user', content: prompt, timestamp: Date.now() });
+
+          // Try AI
           const result = await model.generateContent(prompt);
-          await db.collection('messages').add({ role: 'assistant', content: result.response.text(), timestamp: Date.now() });
+          const response = await result.response;
+          const text = response.text();
+
+          await db.collection('messages').add({ role: 'assistant', content: text, timestamp: Date.now() });
         } catch (e) {
-          setError("AI Connection Error: " + e.message);
+          console.error("FULL ERROR OBJECT:", e);
+          setErrorDetails(e.toString());
         } finally {
           setLoading(false);
         }
       };
 
       return h('div', { className: 'chat-container' },
-        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 text-center' },
-          h('h1', { className: 'text-xl font-bold text-amber-900' }, '🏡 Homestead Helper')
-        ),
-        error && h('div', { className: 'error-banner' }, `⚠️ ${error}`),
+        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 text-center font-bold text-amber-900' }, '🏡 Homestead Helper Diagnostic Mode'),
         h('div', { className: 'messages-container' },
           messages.map((m, i) => h('div', { key: i, className: `bubble ${m.role}` }, m.content)),
-          loading && h('div', { className: 'assistant bubble' }, 'Analyzing...'),
+          loading && h('div', { className: 'assistant bubble' }, 'Sending to Gemini...'),
+          errorDetails && h('div', { className: 'error-log' }, 
+            h('p', { className: 'font-bold' }, "⚠️ CONNECTION FAILED:"),
+            h('p', null, errorDetails)
+          ),
           h('div', { ref: scrollRef })
         ),
         h('div', { className: 'p-4 bg-white border-t-2 border-amber-900 flex gap-2' },
-          h('input', {
-            value: inputText,
-            onChange: e => setInputText(e.target.value),
-            onKeyPress: e => e.key === 'Enter' && sendMessage(),
-            className: 'flex-1 p-3 border-2 border-amber-100 rounded-xl outline-none focus:border-amber-400',
-            placeholder: 'How is Ruth doing?'
-          }),
-          h('button', { 
-            onClick: sendMessage, 
-            className: 'bg-amber-800 text-white px-6 py-2 rounded-xl font-bold active:scale-95 transition-transform' 
-          }, 'Send')
+          h('input', { value: input, onChange: e => setInput(e.target.value), onKeyPress: e => e.key === 'Enter' && send(), className: 'flex-1 p-2 border rounded outline-none' }),
+          h('button', { onClick: send, className: 'bg-amber-800 text-white px-6 py-2 rounded font-bold' }, 'Send')
         )
       );
     }
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(h(HomesteadApp));
+    root.render(h(App));
   </script>
 </body>
 </html>
