@@ -13,14 +13,19 @@
   
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
-    :root { --folk-cream: #FFF8E7; --folk-peach: #FFB4A2; --folk-brown: #8B6F47; --folk-mint: #B5E7D3; }
+    :root {
+      --folk-cream: #FFF8E7;
+      --folk-peach: #FFB4A2;
+      --folk-brown: #8B6F47;
+      --folk-mint: #B5E7D3;
+    }
     body { font-family: 'Josefin Sans', sans-serif; background: var(--folk-cream); margin: 0; }
     .chat-container { height: 100vh; display: flex; flex-direction: column; }
-    .messages-container { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 12px; }
+    .messages-container { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 12px; }
     .message-bubble { border: 2.5px solid var(--folk-brown); border-radius: 20px; padding: 15px; max-width: 85%; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); }
-    .user { align-self: flex-end; background: #FFB4A2; color: #8B6F47; }
+    .user { align-self: flex-end; background: var(--folk-peach); color: var(--folk-brown); }
     .assistant { align-self: flex-start; background: white; color: #4A5568; }
-    .status-banner { font-size: 10px; background: rgba(0,0,0,0.05); text-align: center; padding: 2px; }
+    .status-banner { font-size: 10px; background: rgba(0,0,0,0.05); text-align: center; padding: 4px; color: var(--folk-brown); }
   </style>
 </head>
 <body>
@@ -43,41 +48,41 @@
     function HomesteadHelperPro() {
       const [messages, setMessages] = useState([]);
       const [inputText, setInputText] = useState('');
-      const [status, setStatus] = useState('Systems Online');
+      const [status, setStatus] = useState('Checking Connection...');
       const [loading, setLoading] = useState(false);
-      const messagesEndRef = useRef(null);
+      const scrollRef = useRef(null);
 
       useEffect(() => {
         const unsub = db.collection('homesteads').doc('family').collection('messages')
           .orderBy('timestamp', 'asc').limit(50)
           .onSnapshot(snap => {
             setMessages(snap.docs.map(doc => ({id: doc.id, ...doc.data()})));
+            setStatus('Systems Online');
           }, err => setStatus('DB Error: ' + err.message));
         return () => unsub();
       }, []);
 
-      useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+      useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
       const sendMessage = async () => {
         if (!inputText.trim() || loading) return;
         const prompt = inputText;
         setInputText('');
         setLoading(true);
-        setStatus('Consulting Gemini...');
 
         try {
-          // 1. Save User Message
           await db.collection('homesteads').doc('family').collection('messages').add({
             role: 'user', content: prompt, timestamp: Date.now()
           });
 
-          // 2. The Fixed API Handshake
-          const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${firebaseConfig.apiKey}`;
+          // THE FIX: v1beta + models/ prefix
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${firebaseConfig.apiKey}`;
+          
           const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: `You are a Homestead Assistant for a family in Airville, PA. You know Ruth (sheep), the chickens, and the garden. Prompt: ${prompt}` }] }]
+              contents: [{ parts: [{ text: `Location: Airville, PA. Assist Mike and family. Animals: Ruth (sheep), chickens, ducks, peafowl, and Tobias (limping). Be direct and practical. Prompt: ${prompt}` }] }]
             })
           });
 
@@ -85,11 +90,9 @@
           if (data.error) throw new Error(data.error.message);
           const aiText = data.candidates[0].content.parts[0].text;
 
-          // 3. Save AI Response
           await db.collection('homesteads').doc('family').collection('messages').add({
             role: 'assistant', content: aiText, timestamp: Date.now()
           });
-          setStatus('Systems Online');
         } catch (e) {
           setStatus('AI Error: ' + e.message);
         } finally {
@@ -100,27 +103,26 @@
       return h('div', { className: 'chat-container' },
         h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 flex justify-between items-center' },
           h('h1', { className: 'text-xl font-bold text-amber-900' }, '🏡 Homestead Helper Pro'),
-          h('button', { className: 'bg-white p-2 rounded-lg text-xs' }, '📊 Modules')
+          h('button', { className: 'bg-white px-3 py-1 rounded-lg text-xs font-bold border-2 border-amber-900' }, '📊 Modules')
         ),
         h('div', { className: 'status-banner' }, status),
         h('div', { className: 'messages-container' },
           messages.map((m, i) => h('div', { key: i, className: `message-bubble ${m.role}` }, m.content)),
-          loading && h('div', { className: 'assistant message-bubble' }, 'Thinking...'),
-          h('div', { ref: messagesEndRef })
+          loading && h('div', { className: 'assistant message-bubble' }, '...'),
+          h('div', { ref: scrollRef })
         ),
         h('div', { className: 'p-4 bg-white border-t-2 border-amber-900 flex gap-2' },
           h('input', {
             value: inputText, onChange: e => setInputText(e.target.value),
             onKeyPress: e => e.key === 'Enter' && sendMessage(),
-            className: 'flex-1 p-3 border-2 border-amber-100 rounded-xl outline-none focus:border-amber-400',
-            placeholder: 'How is Ruth?'
+            className: 'flex-1 p-3 border-2 border-amber-100 rounded-xl outline-none',
+            placeholder: 'Type a message...'
           }),
           h('button', { onClick: sendMessage, className: 'bg-amber-800 text-white px-6 py-2 rounded-xl font-bold' }, '➤')
         )
       );
     }
 
-    // Correct React 18 Mounting
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(h(HomesteadHelperPro));
   </script>
