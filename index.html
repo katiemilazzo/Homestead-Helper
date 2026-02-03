@@ -12,16 +12,16 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
-    :root { --folk-cream: #FFF8E7; --folk-peach: #FFB4A2; --folk-brown: #8B6F47; --folk-mint: #B5E7D3; }
-    body { font-family: 'Josefin Sans', sans-serif; background: var(--folk-cream); margin: 0; overflow: hidden; }
+    @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;700&family=Josefin+Sans:wght@300;400;600;700&display=swap');
+    :root { --cream: #FFF8E7; --peach: #FFB4A2; --brown: #8B6F47; --mint: #B5E7D3; }
+    body { font-family: 'Josefin Sans', sans-serif; background: var(--cream); margin: 0; overflow: hidden; }
     .chat-container { height: 100vh; display: flex; flex-direction: column; }
     .messages-container { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 12px; }
-    .message-bubble { border: 2.5px solid var(--folk-brown); border-radius: 20px; padding: 15px; max-width: 85%; box-shadow: 4px 4px 0 rgba(0,0,0,0.05); }
-    .user { align-self: flex-end; background: var(--folk-peach); color: var(--folk-brown); }
+    .message-bubble { border: 2.5px solid var(--brown); border-radius: 20px; padding: 15px; max-width: 85%; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); }
+    .user { align-self: flex-end; background: var(--peach); color: var(--brown); }
     .assistant { align-self: flex-start; background: white; color: #4A5568; }
-    .status-banner { font-size: 10px; background: rgba(0,0,0,0.05); text-align: center; padding: 4px; color: var(--folk-brown); border-bottom: 1px solid rgba(0,0,0,0.1); }
-    .slide-panel { position: fixed; top: 0; right: -100%; width: 85%; height: 100%; background: white; z-index: 50; transition: 0.3s; border-left: 4px solid var(--folk-brown); }
+    .folk-header { border-bottom: 4px solid var(--brown); background: linear-gradient(to right, var(--peach), #E5989B, var(--peach)); }
+    .slide-panel { position: fixed; top: 0; right: -100%; width: 85%; height: 100%; background: var(--cream); z-index: 50; transition: 0.3s; border-left: 4px solid var(--brown); }
     .slide-panel.open { right: 0; }
   </style>
 </head>
@@ -29,9 +29,6 @@
   <div id="root"></div>
 
   <script type="module">
-    // FIX: Using ESM.run to import the SDK properly
-    import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
-
     const config = {
       apiKey: "AIzaSyDSR3019LmFBUSLUfr3xCNW67WpXKc9edQ",
       authDomain: "homestead-helper-fdc23.firebaseapp.com",
@@ -41,102 +38,102 @@
       appId: "1:704725515036:web:4dd3427e51afe507b018d9"
     };
 
-    if (!firebase.apps.length) firebase.initializeApp(config);
+    firebase.initializeApp(config);
     const db = firebase.firestore();
     const { useState, useEffect, useRef, createElement: h } = React;
 
     function App() {
       const [messages, setMessages] = useState([]);
       const [input, setInput] = useState('');
-      const [status, setStatus] = useState('Systems Online');
       const [loading, setLoading] = useState(false);
       const [showPanel, setShowPanel] = useState(false);
+      const [error, setError] = useState(null);
       const scrollRef = useRef(null);
 
       useEffect(() => {
-        const unsub = db.collection('homesteads').doc('family').collection('messages')
+        return db.collection('homesteads').doc('family').collection('messages')
           .orderBy('timestamp', 'asc').limit(50)
-          .onSnapshot(snap => setMessages(snap.docs.map(doc => ({id: doc.id, ...doc.data()}))));
-        return () => unsub();
+          .onSnapshot(snap => setMessages(snap.docs.map(d => ({id: d.id, ...d.data()}))));
       }, []);
 
       useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-      const send = async () => {
+      const sendMessage = async () => {
         if (!input.trim() || loading) return;
         const prompt = input;
         setInput('');
         setLoading(true);
-        setStatus('Consulting Gemini...');
+        setError(null);
 
         try {
-          // Log User message to Firestore
+          // 1. Log to DB
           await db.collection('homesteads').doc('family').collection('messages').add({
             role: 'user', content: prompt, timestamp: Date.now()
           });
 
-          // FIX: SDK Handshake
-          const genAI = new GoogleGenerativeAI(config.apiKey);
-          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-          
-          const result = await model.generateContent(`Location: Airville, PA. You know about Ruth (sheep) and Tobias (limping). Be direct and practical. Prompt: ${prompt}`);
-          const response = await result.response;
-          const aiText = response.text();
+          // 2. Direct Fetch Handshake (No SDK dependency)
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${config.apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{ text: `You are the Homestead Assistant for Mike's family in Airville, PA. You know Ruth (sheep), chickens, ducks, peafowl, and Tobias (limp). Be direct. Prompt: ${prompt}` }]
+              }]
+            })
+          });
 
-          // Log AI message to Firestore
+          const data = await response.json();
+          if (data.error) throw new Error(data.error.message);
+          
+          const aiText = data.candidates[0].content.parts[0].text;
+
+          // 3. Log Result
           await db.collection('homesteads').doc('family').collection('messages').add({
             role: 'assistant', content: aiText, timestamp: Date.now()
           });
-          setStatus('Systems Online');
         } catch (e) {
-          console.error(e);
-          setStatus('AI Error: ' + e.message);
+          setError(e.message);
         } finally {
           setLoading(false);
         }
       };
 
       return h('div', { className: 'chat-container' },
-        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 flex justify-between items-center' },
-          h('h1', { className: 'text-xl font-bold text-amber-900' }, '🏡 Homestead Helper Pro'),
-          h('button', { onClick: () => setShowPanel(true), className: 'bg-white px-3 py-1 rounded-lg text-xs font-bold border-2 border-amber-900' }, '📊 Modules')
+        h('header', { className: 'folk-header p-4 flex justify-between items-center' },
+          h('h1', { className: 'text-xl font-bold text-amber-900', style: { fontFamily: "'Crimson Text', serif" } }, '🏡 Homestead Helper Pro'),
+          h('button', { onClick: () => setShowPanel(true), className: 'bg-white px-3 py-1 rounded-lg text-xs font-bold border-2 border-amber-900' }, 'MENU')
         ),
         
-        h('div', { className: 'status-banner' }, status),
-
         h('div', { className: 'messages-container' },
+          error && h('div', { className: 'bg-red-100 p-2 text-xs text-red-700 border-2 border-red-700 rounded mb-4' }, `⚠️ ${error}`),
           messages.map((m, i) => h('div', { key: i, className: `message-bubble ${m.role}` }, m.content)),
-          loading && h('div', { className: 'assistant message-bubble italic' }, 'Thinking...'),
+          loading && h('div', { className: 'assistant message-bubble' }, 'Thinking...'),
           h('div', { ref: scrollRef })
         ),
 
-        h('div', { className: 'p-4 bg-white border-t-2 border-amber-900 flex gap-2' },
-          h('button', { className: 'p-2 bg-blue-100 rounded-xl' }, '📍'),
+        h('div', { className: 'p-4 bg-white border-t-4 border-amber-900 flex gap-2' },
           h('input', {
             value: input, onChange: e => setInput(e.target.value),
-            onKeyPress: e => e.key === 'Enter' && send(),
-            className: 'flex-1 p-3 border-2 border-amber-100 rounded-xl outline-none',
-            placeholder: 'How is Ruth today?'
+            onKeyPress: e => e.key === 'Enter' && sendMessage(),
+            className: 'flex-1 p-3 border-2 border-amber-100 rounded-xl outline-none focus:border-amber-400',
+            placeholder: 'How is Ruth?'
           }),
-          h('button', { onClick: send, className: 'bg-amber-800 text-white px-6 py-2 rounded-xl font-bold' }, 'Send')
+          h('button', { onClick: sendMessage, className: 'bg-amber-800 text-white px-6 py-2 rounded-xl font-bold' }, 'Send')
         ),
 
-        // Side Panel Restored
+        // Side Panel
         h('div', { className: `slide-panel p-6 ${showPanel ? 'open' : ''}` },
           h('div', { className: 'flex justify-between items-center mb-6' },
-            h('h2', { className: 'text-2xl font-bold text-amber-900' }, 'Organized View'),
+            h('h2', { className: 'text-2xl font-bold text-amber-900' }, 'Homestead Modules'),
             h('button', { onClick: () => setShowPanel(false), className: 'text-2xl' }, '✕')
           ),
-          h('div', { className: 'space-y-4' },
-            ['Garden', 'Livestock', 'Bees', 'Weather'].map(m => 
-              h('div', { key: m, className: 'p-4 border-2 border-amber-800 rounded-xl bg-orange-50 font-bold' }, m)
-            )
+          ['Livestock (Ruth/Tobias)', 'Poultry (Ducks/Peafowl)', 'Garden & Weather', 'Beekeeping'].map(m => 
+            h('div', { key: m, className: 'p-4 border-2 border-amber-800 rounded-xl bg-orange-50 font-bold mb-3' }, m)
           )
         )
       );
     }
 
-    // React 18 Mounting
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(h(App));
   </script>
