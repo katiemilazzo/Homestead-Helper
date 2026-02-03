@@ -10,25 +10,26 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-
+  
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600;700&family=Josefin+Sans:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
     :root { --folk-cream: #FFF8E7; --folk-peach: #FFB4A2; --folk-brown: #8B6F47; --folk-mint: #B5E7D3; }
     body { font-family: 'Josefin Sans', sans-serif; background: var(--folk-cream); margin: 0; overflow: hidden; }
     .chat-container { height: 100vh; display: flex; flex-direction: column; }
     .messages-container { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 12px; }
-    .message-bubble { border: 2.5px solid var(--folk-brown); border-radius: 20px; padding: 15px; max-width: 85%; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); }
+    .message-bubble { border: 2.5px solid var(--folk-brown); border-radius: 20px; padding: 15px; max-width: 85%; box-shadow: 4px 4px 0 rgba(0,0,0,0.05); }
     .user { align-self: flex-end; background: var(--folk-peach); color: var(--folk-brown); }
     .assistant { align-self: flex-start; background: white; color: #4A5568; }
-    .folk-header { border-bottom: 4px solid var(--folk-brown); background: linear-gradient(to right, var(--folk-peach), #E5989B, var(--folk-peach)); }
-    .status-banner { font-size: 10px; text-align: center; padding: 4px; background: rgba(0,0,0,0.05); color: var(--folk-brown); }
+    .status-banner { font-size: 10px; background: rgba(0,0,0,0.05); text-align: center; padding: 4px; color: var(--folk-brown); border-bottom: 1px solid rgba(0,0,0,0.1); }
+    .slide-panel { position: fixed; top: 0; right: -100%; width: 85%; height: 100%; background: white; z-index: 50; transition: 0.3s; border-left: 4px solid var(--folk-brown); }
+    .slide-panel.open { right: 0; }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
   <script type="module">
-    // IMPORT THE OFFICIAL SDK TO FIX THE 404 MODEL ERROR
+    // FIX: Using ESM.run to import the SDK properly
     import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 
     const config = {
@@ -47,82 +48,95 @@
     function App() {
       const [messages, setMessages] = useState([]);
       const [input, setInput] = useState('');
-      const [status, setStatus] = useState('Online');
+      const [status, setStatus] = useState('Systems Online');
       const [loading, setLoading] = useState(false);
+      const [showPanel, setShowPanel] = useState(false);
       const scrollRef = useRef(null);
 
       useEffect(() => {
         const unsub = db.collection('homesteads').doc('family').collection('messages')
           .orderBy('timestamp', 'asc').limit(50)
-          .onSnapshot(snap => setMessages(snap.docs.map(doc => ({id: doc.id, ...doc.data()}))), 
-          err => setStatus('DB Connection Issue'));
+          .onSnapshot(snap => setMessages(snap.docs.map(doc => ({id: doc.id, ...doc.data()}))));
         return () => unsub();
       }, []);
 
       useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-      const sendMessage = async () => {
+      const send = async () => {
         if (!input.trim() || loading) return;
-        const promptText = input;
+        const prompt = input;
         setInput('');
         setLoading(true);
-        setStatus('Connecting to Gemini...');
+        setStatus('Consulting Gemini...');
 
         try {
-          // 1. Log to Firestore
+          // Log User message to Firestore
           await db.collection('homesteads').doc('family').collection('messages').add({
-            role: 'user', content: promptText, timestamp: Date.now()
+            role: 'user', content: prompt, timestamp: Date.now()
           });
 
-          // 2. Use SDK - This eliminates the URL "Not Found" errors
+          // FIX: SDK Handshake
           const genAI = new GoogleGenerativeAI(config.apiKey);
           const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
           
-          const result = await model.generateContent(`Location: Airville, PA. User: ${promptText}`);
+          const result = await model.generateContent(`Location: Airville, PA. You know about Ruth (sheep) and Tobias (limping). Be direct and practical. Prompt: ${prompt}`);
           const response = await result.response;
           const aiText = response.text();
 
-          // 3. Log AI result
-          await db.collection('messages').add({
+          // Log AI message to Firestore
+          await db.collection('homesteads').doc('family').collection('messages').add({
             role: 'assistant', content: aiText, timestamp: Date.now()
           });
-          setStatus('Online');
+          setStatus('Systems Online');
         } catch (e) {
           console.error(e);
-          setStatus('Error: ' + e.message);
+          setStatus('AI Error: ' + e.message);
         } finally {
           setLoading(false);
         }
       };
 
       return h('div', { className: 'chat-container' },
-        h('header', { className: 'folk-header p-4' },
-          h('div', { className: 'flex justify-between items-center' },
-            h('h1', { className: 'text-2xl font-bold text-amber-900', style: { fontFamily: "'Crimson Text', serif" } }, '🏡 Homestead Helper Pro'),
-            h('div', { className: 'flex gap-2' },
-              h('button', { className: 'p-2 bg-white rounded-lg' }, '📍'),
-              h('button', { className: 'p-2 bg-white rounded-lg' }, '📊')
-            )
-          )
+        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 flex justify-between items-center' },
+          h('h1', { className: 'text-xl font-bold text-amber-900' }, '🏡 Homestead Helper Pro'),
+          h('button', { onClick: () => setShowPanel(true), className: 'bg-white px-3 py-1 rounded-lg text-xs font-bold border-2 border-amber-900' }, '📊 Modules')
         ),
+        
         h('div', { className: 'status-banner' }, status),
+
         h('div', { className: 'messages-container' },
           messages.map((m, i) => h('div', { key: i, className: `message-bubble ${m.role}` }, m.content)),
           loading && h('div', { className: 'assistant message-bubble italic' }, 'Thinking...'),
           h('div', { ref: scrollRef })
         ),
-        h('div', { className: 'p-4 bg-white border-t-4 border-amber-900 flex gap-2' },
+
+        h('div', { className: 'p-4 bg-white border-t-2 border-amber-900 flex gap-2' },
+          h('button', { className: 'p-2 bg-blue-100 rounded-xl' }, '📍'),
           h('input', {
             value: input, onChange: e => setInput(e.target.value),
-            onKeyPress: e => e.key === 'Enter' && sendMessage(),
+            onKeyPress: e => e.key === 'Enter' && send(),
             className: 'flex-1 p-3 border-2 border-amber-100 rounded-xl outline-none',
-            placeholder: 'Type a message...'
+            placeholder: 'How is Ruth today?'
           }),
-          h('button', { onClick: sendMessage, className: 'bg-amber-800 text-white px-6 py-2 rounded-xl font-bold' }, 'Send')
+          h('button', { onClick: send, className: 'bg-amber-800 text-white px-6 py-2 rounded-xl font-bold' }, 'Send')
+        ),
+
+        // Side Panel Restored
+        h('div', { className: `slide-panel p-6 ${showPanel ? 'open' : ''}` },
+          h('div', { className: 'flex justify-between items-center mb-6' },
+            h('h2', { className: 'text-2xl font-bold text-amber-900' }, 'Organized View'),
+            h('button', { onClick: () => setShowPanel(false), className: 'text-2xl' }, '✕')
+          ),
+          h('div', { className: 'space-y-4' },
+            ['Garden', 'Livestock', 'Bees', 'Weather'].map(m => 
+              h('div', { key: m, className: 'p-4 border-2 border-amber-800 rounded-xl bg-orange-50 font-bold' }, m)
+            )
+          )
         )
       );
     }
 
+    // React 18 Mounting
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(h(App));
   </script>
