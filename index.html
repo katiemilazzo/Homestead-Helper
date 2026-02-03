@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Homestead Helper Pro</title>
+  
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -12,13 +13,14 @@
   
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
-    body { font-family: 'Josefin Sans', sans-serif; background: #FFF8E7; margin: 0; }
+    :root { --cream: #FFF8E7; --peach: #FFB4A2; --brown: #8B6F47; --mint: #B5E7D3; }
+    body { font-family: 'Josefin Sans', sans-serif; background: var(--cream); margin: 0; }
     .chat-container { height: 100vh; display: flex; flex-direction: column; }
-    .messages-container { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 10px; }
-    .bubble { border: 2px solid #8B6F47; border-radius: 15px; padding: 12px; max-width: 85%; }
-    .user { align-self: flex-end; background: #B5E7D3; }
-    .assistant { align-self: flex-start; background: white; }
-    .status-bar { font-size: 10px; text-align: center; padding: 4px; background: rgba(0,0,0,0.05); }
+    .messages-container { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 12px; }
+    .bubble { border: 2.5px solid var(--brown); border-radius: 18px; padding: 12px; max-width: 85%; }
+    .user { align-self: flex-end; background: var(--mint); box-shadow: 4px 4px 0 rgba(0,0,0,0.05); }
+    .assistant { align-self: flex-start; background: white; box-shadow: -4px 4px 0 rgba(0,0,0,0.05); }
+    .status-banner { font-size: 11px; text-align: center; padding: 4px; background: rgba(0,0,0,0.05); color: var(--brown); }
   </style>
 </head>
 <body>
@@ -34,66 +36,79 @@
       appId: "1:704725515036:web:4dd3427e51afe507b018d9"
     };
 
-    firebase.initializeApp(config);
+    if (!firebase.apps.length) firebase.initializeApp(config);
     const db = firebase.firestore();
     const { useState, useEffect, useRef, createElement: h } = React;
 
     function App() {
       const [messages, setMessages] = useState([]);
       const [input, setInput] = useState('');
-      const [status, setStatus] = useState('Initializing...');
+      const [loading, setLoading] = useState(false);
+      const [status, setStatus] = useState('Connecting to Database...');
       const scrollRef = useRef(null);
 
       useEffect(() => {
         const unsub = db.collection('messages').orderBy('timestamp', 'asc').limit(50)
-          .onSnapshot(snap => {
-            setMessages(snap.docs.map(doc => doc.data()));
+          .onSnapshot(s => {
+            setMessages(s.docs.map(d => d.data()));
             setStatus('Systems Online');
-          }, err => setStatus('Connection Error: ' + err.message));
+          }, e => setStatus('DB Error: ' + e.message));
         return () => unsub();
       }, []);
 
       useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
       const send = async () => {
-        if (!input.trim()) return;
+        if (!input.trim() || loading) return;
         const prompt = input;
         setInput('');
+        setLoading(true);
+
         try {
-          // 1. Log user message
           await db.collection('messages').add({ role: 'user', content: prompt, timestamp: Date.now() });
-          
-          // 2. Call Gemini API
+
           const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${config.apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `You are a helpful homestead assistant for a family in Airville, PA. Help with Ruth (sheep), chickens, and the garden. Be direct and helpful, not sycophantic. Prompt: ${prompt}` }] }]
+            })
           });
+
           const data = await res.json();
           if (data.error) throw new Error(data.error.message);
-
-          // 3. Log AI response
-          await db.collection('messages').add({ role: 'assistant', content: data.candidates[0].content.parts[0].text, timestamp: Date.now() });
+          
+          const aiText = data.candidates[0].content.parts[0].text;
+          await db.collection('messages').add({ role: 'assistant', content: aiText, timestamp: Date.now() });
         } catch (e) {
-          setStatus('AI Error: ' + e.message);
+          setStatus("AI Error: " + e.message);
+        } finally {
+          setLoading(false);
         }
       };
 
       return h('div', { className: 'chat-container' },
-        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 font-bold text-center' }, '🏡 Homestead Helper Pro'),
-        h('div', { className: 'status-bar' }, status),
+        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 text-center' },
+          h('h1', { className: 'text-xl font-bold text-amber-900' }, '🏡 Homestead Helper Pro')
+        ),
+        h('div', { className: 'status-banner' }, status),
         h('div', { className: 'messages-container' },
           messages.map((m, i) => h('div', { key: i, className: `bubble ${m.role}` }, m.content)),
+          loading && h('div', { className: 'assistant bubble' }, 'Thinking...'),
           h('div', { ref: scrollRef })
         ),
         h('div', { className: 'p-4 bg-white border-t-2 border-amber-900 flex gap-2' },
-          h('input', { value: input, onChange: e => setInput(e.target.value), onKeyPress: e => e.key === 'Enter' && send(), className: 'flex-1 p-2 border rounded', placeholder: 'Message...' }),
-          h('button', { onClick: send, className: 'bg-amber-800 text-white px-4 py-2 rounded font-bold' }, 'Send')
+          h('input', {
+            value: input, onChange: e => setInput(e.target.value),
+            onKeyPress: e => e.key === 'Enter' && send(),
+            className: 'flex-1 p-2 border-2 border-amber-100 rounded-xl outline-none',
+            placeholder: 'How is Ruth doing?'
+          }),
+          h('button', { onClick: send, className: 'bg-amber-800 text-white px-6 py-2 rounded-xl font-bold' }, 'Send')
         )
       );
     }
 
-    // React 18 Mounting
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(h(App));
   </script>
