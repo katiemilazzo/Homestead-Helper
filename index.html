@@ -3,10 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Homestead">
-  <meta name="theme-color" content="#FFB4A2">
   <title>Homestead Helper Pro</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
@@ -14,83 +10,23 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-  
+
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600;700&family=Josefin+Sans:wght@300;400;600;700&display=swap');
-    
-    :root {
-      --folk-cream: #FFF8E7;
-      --folk-peach: #FFB4A2;
-      --folk-coral: #E5989B;
-      --folk-mint: #B5E7D3;
-      --folk-butter: #FFE5B4;
-      --folk-brown: #8B6F47;
-      --folk-burgundy: #9B5D6B;
-    }
-
-    body {
-      font-family: 'Josefin Sans', sans-serif;
-      background: var(--folk-cream);
-      margin: 0;
-      overscroll-behavior-y: contain;
-    }
-    
-    .chat-container {
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      background: linear-gradient(135deg, var(--folk-cream) 0%, var(--folk-butter) 50%, var(--folk-cream) 100%);
-    }
-    
-    .messages-container {
-      flex: 1;
-      overflow-y: auto;
-      padding: 1.5rem;
-    }
-    
-    .message-bubble {
-      border: 2.5px solid var(--folk-brown);
-      border-radius: 20px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-      max-width: 85%;
-      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.1);
-    }
-
-    .message-bubble.user {
-      background: linear-gradient(135deg, #FFB4A2, #E5989B);
-      color: #8B6F47;
-      align-self: flex-end;
-      margin-left: auto;
-    }
-
-    .message-bubble.assistant {
-      background: linear-gradient(135deg, #FFF8E7, #FFE5B4);
-      color: #4A5568;
-      align-self: flex-start;
-    }
-
-    .folk-header {
-      border-bottom: 4px solid var(--folk-brown);
-      background: linear-gradient(to right, var(--folk-peach), var(--folk-coral), var(--folk-peach));
-    }
-
-    .folk-button {
-      border: 2.5px solid var(--folk-brown);
-      border-radius: 12px;
-      font-weight: 600;
-      transition: all 0.2s ease;
-    }
-
-    .folk-button:active {
-      transform: translate(1px, 1px);
-    }
+    @import url('https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;600;700&display=swap');
+    :root { --cream: #FFF8E7; --brown: #8B6F47; --mint: #B5E7D3; }
+    body { font-family: 'Josefin Sans', sans-serif; background: var(--cream); margin: 0; }
+    .chat-container { height: 100vh; display: flex; flex-direction: column; }
+    .messages-container { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 12px; }
+    .bubble { border: 2.5px solid var(--brown); border-radius: 18px; padding: 12px; max-width: 85%; }
+    .user { align-self: flex-end; background: var(--mint); }
+    .assistant { align-self: flex-start; background: white; }
+    .error-box { background: #fee2e2; border: 2px solid #ef4444; color: #991b1b; padding: 10px; border-radius: 8px; font-size: 11px; margin-bottom: 10px; }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
-  <script>
+  <script type="module">
     const firebaseConfig = {
       apiKey: "AIzaSyDSR3019LmFBUSLUfr3xCNW67WpXKc9edQ",
       authDomain: "homestead-helper-fdc23.firebaseapp.com",
@@ -100,105 +36,95 @@
       appId: "1:704725515036:web:4dd3427e51afe507b018d9"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    // Initialize Firebase
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const { useState, useEffect, useRef, createElement: h } = React;
 
-    function HomesteadHelperPro() {
+    function HomesteadApp() {
       const [messages, setMessages] = useState([]);
-      const [inputText, setInputText] = useState('');
-      const [isLoading, setIsLoading] = useState(false);
-      const messagesEndRef = useRef(null);
+      const [input, setInput] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+      const scrollRef = useRef(null);
 
+      // Listen to Firestore
       useEffect(() => {
-        const unsubscribe = db.collection('homesteads').doc('family').collection('messages')
-          .orderBy('timestamp', 'asc')
-          .onSnapshot((snapshot) => {
-            const msgs = [];
-            snapshot.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
-            setMessages(msgs);
-          });
-        return () => unsubscribe();
+        const unsub = db.collection('homesteads').doc('family').collection('messages')
+          .orderBy('timestamp', 'asc').limit(50)
+          .onSnapshot(snap => {
+            setMessages(snap.docs.map(doc => doc.data()));
+          }, err => setError("Database Error: " + err.message));
+        return () => unsub();
       }, []);
 
-      useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, [messages]);
+      useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-      async function sendMessage() {
-        if (!inputText.trim() || isLoading) return;
-        
-        const userMessage = inputText.trim();
-        setInputText('');
-        setIsLoading(true);
-
-        const messageData = {
-          role: 'user',
-          content: userMessage,
-          timestamp: Date.now()
-        };
+      const sendMessage = async () => {
+        if (!input.trim() || loading) return;
+        const userText = input;
+        setInput('');
+        setLoading(true);
+        setError(null);
 
         try {
-          await db.collection('homesteads').doc('family').collection('messages').add(messageData);
+          // 1. Save User Message
+          await db.collection('homesteads').doc('family').collection('messages').add({
+            role: 'user', content: userText, timestamp: Date.now()
+          });
 
-          const systemContext = `You are a helpful homestead assistant for a family in Airville, PA.
-          You assist with Ruth the sheep, the chickens, ducks, and peafowl.
-          Give practical, warm advice and track tasks. Keep responses concise.`;
-
+          // 2. Call Gemini API (Using THE CORRECT unified Key)
           const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${firebaseConfig.apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: `${systemContext}\n\nUser: ${userMessage}` }] }]
+              contents: [{ parts: [{ text: `You are a Homestead AI for Airville, PA. You know Ruth (sheep), chickens, ducks, and peafowl. User says: ${userText}` }] }]
             })
           });
 
           const data = await response.json();
-          const aiResponse = data.candidates[0].content.parts[0].text;
+          
+          if (data.error) {
+            throw new Error(data.error.message);
+          }
 
+          const aiText = data.candidates[0].content.parts[0].text;
+
+          // 3. Save AI Response
           await db.collection('homesteads').doc('family').collection('messages').add({
-            role: 'assistant',
-            content: aiResponse,
-            timestamp: Date.now()
+            role: 'assistant', content: aiText, timestamp: Date.now()
           });
         } catch (e) {
-          console.error('Error:', e);
+          setError("AI Error: " + e.message);
+          console.error(e);
         } finally {
-          setIsLoading(false);
+          setLoading(false);
         }
-      }
+      };
 
       return h('div', { className: 'chat-container' },
-        h('header', { className: 'folk-header p-4' },
-          h('h1', { className: 'text-2xl font-bold text-center', style: { color: '#8B6F47', fontFamily: "'Crimson Text', serif" } }, 'Homestead Helper Pro')
+        h('header', { className: 'p-4 bg-orange-200 border-b-4 border-amber-900 text-center font-bold text-amber-900' }, '🏡 Homestead Helper Pro'),
+        h('div', { className: 'messages-container' },
+          error && h('div', { className: 'error-box' }, error),
+          messages.map((m, i) => h('div', { key: i, className: `bubble ${m.role}` }, m.content)),
+          loading && h('div', { className: 'assistant bubble' }, 'Thinking...'),
+          h('div', { ref: scrollRef })
         ),
-        h('div', { className: 'messages-container flex flex-col' },
-          messages.map((msg, i) => 
-            h('div', { key: i, className: `message-bubble ${msg.role}` }, msg.content)
-          ),
-          h('div', { ref: messagesEndRef })
-        ),
-        h('div', { className: 'p-4 border-t-4 border-amber-900 bg-white' },
-          h('div', { className: 'flex gap-2 max-w-4xl mx-auto' },
-            h('input', {
-              value: inputText,
-              onChange: (e) => setInputText(e.target.value),
-              onKeyPress: (e) => e.key === 'Enter' && sendMessage(),
-              className: 'flex-1 p-3 border-2 border-amber-800 rounded-xl outline-none',
-              placeholder: 'Tell me about the farm...'
-            }),
-            h('button', {
-              onClick: sendMessage,
-              disabled: isLoading,
-              className: 'folk-button bg-amber-800 text-white px-6 py-2'
-            }, isLoading ? '...' : '➤')
-          )
+        h('div', { className: 'p-4 bg-white border-t-2 border-amber-900 flex gap-2' },
+          h('input', {
+            value: input, onChange: e => setInput(e.target.value),
+            onKeyPress: e => e.key === 'Enter' && sendMessage(),
+            className: 'flex-1 p-2 border-2 border-amber-100 rounded-xl outline-none focus:border-amber-400',
+            placeholder: 'Ask about Ruth...'
+          }),
+          h('button', { onClick: sendMessage, className: 'bg-amber-800 text-white px-6 py-2 rounded-xl font-bold' }, 'Send')
         )
       );
     }
 
+    // Correct React 18 Rendering
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(h(HomesteadHelperPro));
+    root.render(h(HomesteadApp));
   </script>
 </body>
 </html>
