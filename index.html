@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Homestead Helper Pro</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#AED6F1">
+  <title>Homestead Helper</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -12,24 +14,250 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;700&family=Josefin+Sans:wght@300;400;600;700&display=swap');
-    :root { --cream: #FFF8E7; --peach: #FFB4A2; --brown: #8B6F47; --mint: #B5E7D3; }
-    body { font-family: 'Josefin Sans', sans-serif; background: var(--cream); margin: 0; overflow: hidden; }
-    .chat-container { height: 100vh; display: flex; flex-direction: column; }
-    .messages-container { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 12px; }
-    .message-bubble { border: 2.5px solid var(--brown); border-radius: 20px; padding: 15px; max-width: 85%; box-shadow: 4px 4px 0 rgba(0,0,0,0.1); }
-    .user { align-self: flex-end; background: var(--peach); color: var(--brown); }
-    .assistant { align-self: flex-start; background: white; color: #4A5568; }
-    .folk-header { border-bottom: 4px solid var(--brown); background: linear-gradient(to right, var(--peach), #E5989B, var(--peach)); }
-    .slide-panel { position: fixed; top: 0; right: -100%; width: 85%; height: 100%; background: var(--cream); z-index: 50; transition: 0.3s; border-left: 4px solid var(--brown); }
-    .slide-panel.open { right: 0; }
+    @import url('https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400;500;700&display=swap');
+    
+    :root {
+      --sky-blue: #AED6F1;
+      --sunny-yellow: #F4D03F;
+      --coral-red: #E74C3C;
+      --mint-green: #A8E6CF;
+      --cream: #FAF3E0;
+      --navy: #1C2833;
+      --powder-blue: #85C1E9;
+      --burnt-orange: #E67E22;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Archivo Narrow', sans-serif;
+      background: var(--cream);
+      overscroll-behavior-y: contain;
+    }
+
+    h1, h2, h3, .title {
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    
+    .app-container {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--cream);
+    }
+    
+    .wes-header {
+      background: var(--sky-blue);
+      border-bottom: 4px solid var(--navy);
+      padding: 1rem;
+      position: relative;
+    }
+
+    .wes-header::after {
+      content: '';
+      position: absolute;
+      bottom: -4px;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: repeating-linear-gradient(
+        90deg,
+        var(--navy) 0px,
+        var(--navy) 20px,
+        var(--sky-blue) 20px,
+        var(--sky-blue) 40px
+      );
+    }
+    
+    .messages-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    
+    .message-card {
+      border: 3px solid var(--navy);
+      border-radius: 0;
+      padding: 1rem;
+      max-width: 80%;
+      box-shadow: 6px 6px 0 rgba(28, 40, 51, 0.15);
+      position: relative;
+    }
+
+    .message-card.user {
+      align-self: flex-end;
+      background: var(--coral-red);
+      color: white;
+      margin-left: auto;
+    }
+
+    .message-card.assistant {
+      align-self: flex-start;
+      background: var(--sunny-yellow);
+      color: var(--navy);
+    }
+
+    .message-card.agent {
+      align-self: flex-start;
+      background: var(--mint-green);
+      color: var(--navy);
+      border-color: var(--navy);
+    }
+
+    .agent-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+      color: var(--navy);
+    }
+
+    .wes-button {
+      border: 3px solid var(--navy);
+      background: var(--powder-blue);
+      color: var(--navy);
+      padding: 0.75rem 1.5rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 4px 4px 0 var(--navy);
+      font-size: 0.875rem;
+    }
+
+    .wes-button:hover:not(:disabled) {
+      transform: translate(-2px, -2px);
+      box-shadow: 6px 6px 0 var(--navy);
+    }
+
+    .wes-button:active:not(:disabled) {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0 var(--navy);
+    }
+
+    .wes-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .wes-button.primary {
+      background: var(--coral-red);
+      color: white;
+    }
+
+    .wes-button.success {
+      background: var(--mint-green);
+    }
+
+    .input-area {
+      background: var(--powder-blue);
+      border-top: 4px solid var(--navy);
+      padding: 1rem;
+    }
+
+    .wes-input {
+      width: 100%;
+      border: 3px solid var(--navy);
+      background: white;
+      padding: 0.75rem;
+      font-size: 1rem;
+      font-family: 'Archivo Narrow', sans-serif;
+      color: var(--navy);
+    }
+
+    .wes-input:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--sunny-yellow);
+    }
+
+    .badge-icon {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--navy);
+      background: white;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    .loading-dots {
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .loading-dots span {
+      width: 8px;
+      height: 8px;
+      background: var(--navy);
+      border-radius: 50%;
+      animation: bounce 1.4s infinite ease-in-out both;
+    }
+
+    .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1); }
+    }
+
+    .slide-panel {
+      position: fixed;
+      top: 0;
+      right: -100%;
+      width: 100%;
+      max-width: 400px;
+      height: 100vh;
+      background: var(--cream);
+      border-left: 4px solid var(--navy);
+      z-index: 100;
+      transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow-y: auto;
+    }
+
+    .slide-panel.open {
+      right: 0;
+    }
+
+    .module-card {
+      border: 3px solid var(--navy);
+      background: white;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      box-shadow: 4px 4px 0 rgba(28, 40, 51, 0.15);
+    }
+
+    .title-card {
+      text-align: center;
+      padding: 2rem 1rem;
+      border-top: 3px solid var(--navy);
+      border-bottom: 3px solid var(--navy);
+      margin: 2rem 0;
+      background: var(--sunny-yellow);
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
-  <script type="module">
-    const config = {
+  <script>
+    const firebaseConfig = {
       apiKey: "AIzaSyDSR3019LmFBUSLUfr3xCNW67WpXKc9edQ",
       authDomain: "homestead-helper-fdc23.firebaseapp.com",
       projectId: "homestead-helper-fdc23",
@@ -38,104 +266,508 @@
       appId: "1:704725515036:web:4dd3427e51afe507b018d9"
     };
 
-    firebase.initializeApp(config);
+    // TODO: Add your Groq API key here after downloading
+    const GROQ_API_KEY = 'YOUR_GROQ_API_KEY_HERE';
+
+    firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const { useState, useEffect, useRef, createElement: h } = React;
 
-    function App() {
+    const modules = [
+      { id: 'garden', name: 'Garden', icon: '🌱', color: '#A8E6CF' },
+      { id: 'greenhouse', name: 'Greenhouse', icon: '🏡', color: '#AED6F1' },
+      { id: 'orchard', name: 'Orchard', icon: '🍎', color: '#E74C3C' },
+      { id: 'bees', name: 'Bees', icon: '🐝', color: '#F4D03F' },
+      { id: 'livestock', name: 'Livestock', icon: '🐑', color: '#FAF3E0' },
+      { id: 'birds', name: 'Birds', icon: '🐓', color: '#E67E22' },
+      { id: 'farmstand', name: 'Farm Stand', icon: '🏪', color: '#85C1E9' },
+      { id: 'property', name: 'Property', icon: '🔧', color: '#D4A373' },
+      { id: 'household', name: 'Household', icon: '🏠', color: '#F4B4C4' }
+    ];
+
+    function HomesteadApp() {
       const [messages, setMessages] = useState([]);
-      const [input, setInput] = useState('');
-      const [loading, setLoading] = useState(false);
+      const [inputText, setInputText] = useState('');
+      const [isLoading, setIsLoading] = useState(false);
       const [showPanel, setShowPanel] = useState(false);
-      const [error, setError] = useState(null);
-      const scrollRef = useRef(null);
+      const [tasks, setTasks] = useState({});
+      const [inventory, setInventory] = useState([]);
+      const [profile, setProfile] = useState(null);
+      
+      const messagesEndRef = useRef(null);
+      const fileInputRef = useRef(null);
 
       useEffect(() => {
-        return db.collection('homesteads').doc('family').collection('messages')
-          .orderBy('timestamp', 'asc').limit(50)
-          .onSnapshot(snap => setMessages(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+        db.collection('homesteads').doc('family').onSnapshot(doc => {
+          if (doc.exists && doc.data().profile) {
+            setProfile(doc.data().profile);
+          }
+        });
       }, []);
 
-      useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
-      const sendMessage = async () => {
-        if (!input.trim() || loading) return;
-        const prompt = input;
-        setInput('');
-        setLoading(true);
-        setError(null);
-
-        try {
-          // 1. Log to DB
-          await db.collection('homesteads').doc('family').collection('messages').add({
-            role: 'user', content: prompt, timestamp: Date.now()
+      useEffect(() => {
+        const unsubscribe = db.collection('homesteads').doc('family').collection('messages')
+          .orderBy('timestamp', 'asc')
+          .limit(50)
+          .onSnapshot((snapshot) => {
+            const msgs = [];
+            snapshot.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
+            setMessages(msgs);
           });
+        return () => unsubscribe();
+      }, []);
 
-          // 2. Direct Fetch Handshake (No SDK dependency)
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${config.apiKey}`, {
+      useEffect(() => {
+        const unsubscribe = db.collection('homesteads').doc('family').collection('tasks')
+          .onSnapshot((snapshot) => {
+            const tasksData = {};
+            snapshot.forEach(doc => tasksData[doc.id] = doc.data().items || []);
+            setTasks(tasksData);
+          });
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        const unsubscribe = db.collection('homesteads').doc('family').collection('inventory')
+          .orderBy('timestamp', 'desc')
+          .limit(20)
+          .onSnapshot((snapshot) => {
+            const items = [];
+            snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+            setInventory(items);
+          });
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messages]);
+
+      useEffect(() => {
+        const hasGreeted = localStorage.getItem('hasGreeted');
+        if (!hasGreeted && messages.length === 0) {
+          setTimeout(() => {
+            addMessage('assistant', "Welcome to your homestead! I'm here to help you manage everything. Tell me what's happening on the farm today!", { agent: 'system' });
+            localStorage.setItem('hasGreeted', 'true');
+          }, 1000);
+        }
+      }, []);
+
+      async function addMessage(role, content, metadata = {}) {
+        const message = {
+          role,
+          content,
+          timestamp: Date.now(),
+          ...metadata
+        };
+        
+        try {
+          await db.collection('homesteads').doc('family').collection('messages').add(message);
+        } catch (e) {
+          console.error('Message save error:', e);
+        }
+      }
+
+      async function sendMessage() {
+        if (!inputText.trim() || isLoading) return;
+        
+        const userMessage = inputText.trim();
+        setInputText('');
+        
+        await addMessage('user', userMessage);
+        
+        setIsLoading(true);
+        await getAIResponse(userMessage);
+        setIsLoading(false);
+      }
+
+      async function getAIResponse(userMessage) {
+        try {
+          let systemContext = `You are a helpful homestead assistant with multiple specialized agents. You help manage a family homestead by organizing tasks, tracking inventory, solving problems, and providing seasonal advice.
+
+AGENTS AVAILABLE:
+1. PROBLEM SOLVER - Diagnoses issues with animals, plants, equipment. Provides step-by-step solutions.
+2. INVENTORY TRACKER - Tracks supplies, harvests, and usage patterns. Predicts when to reorder.
+3. SEASONAL PLANNER - Knows planting zones and timing. Provides proactive suggestions.
+4. RESOURCE OPTIMIZER - Analyzes efficiency and suggests improvements.
+
+IMPORTANT INSTRUCTIONS:
+- Be conversational and friendly
+- Extract actionable tasks and log them
+- Track inventory mentions (eggs collected, feed used, etc.)
+- Identify problems and create tasks to solve them
+- Give practical, specific advice
+- Keep responses concise (2-3 sentences usually)
+- When appropriate, identify which agent is responding`;
+
+          if (profile) {
+            systemContext += `\n\nHOMESTEAD PROFILE:
+- Location: ${profile.location}
+- Zone: ${profile.zone}
+- Animals: ${profile.animals}
+- Crops: ${profile.crops}`;
+          }
+
+          const recentMessages = messages.slice(-6).map(m => 
+            `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`
+          ).join('\n\n');
+
+          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${GROQ_API_KEY}`
+            },
             body: JSON.stringify({
-              contents: [{
-                parts: [{ text: `You are the Homestead Assistant for Mike's family in Airville, PA. You know Ruth (sheep), chickens, ducks, peafowl, and Tobias (limp). Be direct. Prompt: ${prompt}` }]
-              }]
+              model: 'llama-3.1-70b-versatile',
+              messages: [
+                { role: 'system', content: systemContext },
+                { role: 'user', content: `Previous conversation:\n${recentMessages}\n\nUser's new message: ${userMessage}` }
+              ],
+              temperature: 0.7,
+              max_tokens: 500
             })
           });
 
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+          }
+
           const data = await response.json();
-          if (data.error) throw new Error(data.error.message);
+          const aiResponse = data.choices[0].message.content;
           
-          const aiText = data.candidates[0].content.parts[0].text;
-
-          // 3. Log Result
-          await db.collection('homesteads').doc('family').collection('messages').add({
-            role: 'assistant', content: aiText, timestamp: Date.now()
-          });
+          let agent = 'general';
+          const lower = aiResponse.toLowerCase();
+          if (lower.includes('problem') || lower.includes('diagnos') || lower.includes('issue')) {
+            agent = 'problem-solver';
+          } else if (lower.includes('inventory') || lower.includes('track') || lower.includes('stock')) {
+            agent = 'inventory';
+          } else if (lower.includes('plant') || lower.includes('season') || lower.includes('zone')) {
+            agent = 'seasonal';
+          } else if (lower.includes('optim') || lower.includes('efficien') || lower.includes('save')) {
+            agent = 'optimizer';
+          }
+          
+          await addMessage('assistant', aiResponse, { agent });
+          await extractAndProcess(userMessage, aiResponse);
+          
         } catch (e) {
-          setError(e.message);
-        } finally {
-          setLoading(false);
+          console.error('AI error:', e);
+          const errorMsg = "Sorry, I had trouble connecting to my AI agents. Please try again.";
+          await addMessage('assistant', errorMsg, { agent: 'error' });
         }
-      };
+      }
 
-      return h('div', { className: 'chat-container' },
-        h('header', { className: 'folk-header p-4 flex justify-between items-center' },
-          h('h1', { className: 'text-xl font-bold text-amber-900', style: { fontFamily: "'Crimson Text', serif" } }, '🏡 Homestead Helper Pro'),
-          h('button', { onClick: () => setShowPanel(true), className: 'bg-white px-3 py-1 rounded-lg text-xs font-bold border-2 border-amber-900' }, 'MENU')
-        ),
+      async function extractAndProcess(userMsg, aiMsg) {
+        const combined = userMsg.toLowerCase() + ' ' + aiMsg.toLowerCase();
         
-        h('div', { className: 'messages-container' },
-          error && h('div', { className: 'bg-red-100 p-2 text-xs text-red-700 border-2 border-red-700 rounded mb-4' }, `⚠️ ${error}`),
-          messages.map((m, i) => h('div', { key: i, className: `message-bubble ${m.role}` }, m.content)),
-          loading && h('div', { className: 'assistant message-bubble' }, 'Thinking...'),
-          h('div', { ref: scrollRef })
+        const taskKeywords = ['need to', 'should', 'must', 'have to', 'fix', 'check', 'water', 'feed', 'collect', 'monitor'];
+        
+        for (const module of modules) {
+          const moduleKeywords = [module.name.toLowerCase(), module.id];
+          const mentionsModule = moduleKeywords.some(kw => combined.includes(kw));
+          const hasTasks = taskKeywords.some(kw => combined.includes(kw));
+          
+          if (mentionsModule && hasTasks) {
+            const sentences = (userMsg + ' ' + aiMsg).split(/[.!?]/);
+            for (const sentence of sentences) {
+              const lower = sentence.toLowerCase();
+              if (moduleKeywords.some(kw => lower.includes(kw)) && 
+                  taskKeywords.some(kw => lower.includes(kw))) {
+                
+                const task = {
+                  id: Date.now() + Math.random(),
+                  text: sentence.trim(),
+                  completed: false,
+                  created: new Date().toISOString(),
+                  extractedFrom: 'chat'
+                };
+                
+                const moduleTasks = tasks[module.id] || [];
+                const updatedTasks = [...moduleTasks, task];
+                
+                await db.collection('homesteads').doc('family').collection('tasks')
+                  .doc(module.id).set({ items: updatedTasks });
+                
+                break;
+              }
+            }
+          }
+        }
+
+        const inventoryKeywords = ['collected', 'harvested', 'used', 'fed', 'gave', 'eggs', 'feed', 'hay'];
+        if (inventoryKeywords.some(kw => combined.includes(kw))) {
+          const item = {
+            description: userMsg,
+            timestamp: Date.now(),
+            date: new Date().toLocaleDateString()
+          };
+          
+          await db.collection('homesteads').doc('family').collection('inventory').add(item);
+        }
+      }
+
+      async function handlePhotoUpload(file) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const photoData = e.target.result;
+          
+          await addMessage('user', '[Photo uploaded for analysis]', { hasPhoto: true, photoData });
+          
+          setIsLoading(true);
+          
+          const response = "I can see you've uploaded a photo! For detailed image analysis, I'd need access to a vision model. For now, please describe what you're seeing and I'll help diagnose any issues!";
+          
+          await addMessage('assistant', response, { agent: 'problem-solver' });
+          setIsLoading(false);
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function renderAgentBadge(agent) {
+        const badges = {
+          'problem-solver': { icon: '🔍', name: 'Problem Solver', color: '#E74C3C' },
+          'inventory': { icon: '📦', name: 'Inventory Tracker', color: '#F4D03F' },
+          'seasonal': { icon: '📅', name: 'Seasonal Planner', color: '#A8E6CF' },
+          'optimizer': { icon: '📊', name: 'Resource Optimizer', color: '#85C1E9' },
+          'general': { icon: '🏡', name: 'Homestead Helper', color: '#AED6F1' }
+        };
+
+        const badge = badges[agent] || badges.general;
+        
+        return h('div', { className: 'agent-badge' },
+          h('span', { 
+            className: 'badge-icon',
+            style: { background: badge.color, fontSize: '1rem', width: '30px', height: '30px' }
+          }, badge.icon),
+          h('span', null, badge.name)
+        );
+      }
+
+      return h('div', { className: 'app-container' },
+        h('header', { className: 'wes-header' },
+          h('div', { className: 'flex items-center justify-between' },
+            h('div', { className: 'flex items-center gap-3' },
+              h('div', { className: 'badge-icon', style: { fontSize: '1.5rem' } }, '🏡'),
+              h('h1', { 
+                className: 'title text-xl',
+                style: { color: 'var(--navy)' }
+              }, 'Homestead Helper')
+            ),
+            h('div', { className: 'flex gap-2' },
+              h('button', {
+                onClick: () => setShowPanel(true),
+                className: 'wes-button',
+                style: { padding: '0.5rem 1rem', fontSize: '0.75rem' }
+              }, '📊 View')
+            )
+          )
         ),
 
-        h('div', { className: 'p-4 bg-white border-t-4 border-amber-900 flex gap-2' },
-          h('input', {
-            value: input, onChange: e => setInput(e.target.value),
-            onKeyPress: e => e.key === 'Enter' && sendMessage(),
-            className: 'flex-1 p-3 border-2 border-amber-100 rounded-xl outline-none focus:border-amber-400',
-            placeholder: 'How is Ruth?'
-          }),
-          h('button', { onClick: sendMessage, className: 'bg-amber-800 text-white px-6 py-2 rounded-xl font-bold' }, 'Send')
-        ),
-
-        // Side Panel
-        h('div', { className: `slide-panel p-6 ${showPanel ? 'open' : ''}` },
-          h('div', { className: 'flex justify-between items-center mb-6' },
-            h('h2', { className: 'text-2xl font-bold text-amber-900' }, 'Homestead Modules'),
-            h('button', { onClick: () => setShowPanel(false), className: 'text-2xl' }, '✕')
+        h('div', { className: 'messages-area' },
+          messages.map((msg, i) =>
+            h('div', {
+              key: msg.id || i,
+              className: `message-card ${msg.role}${msg.agent ? ' agent' : ''}`
+            },
+              msg.agent && msg.agent !== 'system' && renderAgentBadge(msg.agent),
+              msg.hasPhoto && h('div', { className: 'mb-3' },
+                h('img', { 
+                  src: msg.photoData, 
+                  className: 'w-full',
+                  style: { 
+                    border: '3px solid var(--navy)',
+                    maxWidth: '300px'
+                  },
+                  alt: 'Photo' 
+                })
+              ),
+              h('p', { 
+                style: { lineHeight: '1.6' }
+              }, msg.content)
+            )
           ),
-          ['Livestock (Ruth/Tobias)', 'Poultry (Ducks/Peafowl)', 'Garden & Weather', 'Beekeeping'].map(m => 
-            h('div', { key: m, className: 'p-4 border-2 border-amber-800 rounded-xl bg-orange-50 font-bold mb-3' }, m)
+          
+          isLoading && h('div', { className: 'message-card assistant' },
+            h('div', { className: 'loading-dots' },
+              h('span'),
+              h('span'),
+              h('span')
+            )
+          ),
+          
+          h('div', { ref: messagesEndRef })
+        ),
+
+        h('div', { className: 'input-area' },
+          h('div', { className: 'flex gap-2' },
+            h('button', {
+              onClick: () => fileInputRef.current?.click(),
+              className: 'wes-button',
+              style: { padding: '0.75rem' }
+            }, '📷'),
+            
+            h('input', {
+              ref: fileInputRef,
+              type: 'file',
+              accept: 'image/*',
+              capture: 'environment',
+              style: { display: 'none' },
+              onChange: (e) => {
+                if (e.target.files?.[0]) {
+                  handlePhotoUpload(e.target.files[0]);
+                  e.target.value = '';
+                }
+              }
+            }),
+            
+            h('input', {
+              value: inputText,
+              onChange: (e) => setInputText(e.target.value),
+              onKeyPress: (e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              },
+              placeholder: 'Tell me what\'s happening...',
+              className: 'wes-input flex-1',
+              disabled: isLoading
+            }),
+            
+            h('button', {
+              onClick: sendMessage,
+              disabled: !inputText.trim() || isLoading,
+              className: 'wes-button primary'
+            }, '→')
+          )
+        ),
+
+        showPanel && h('div', { className: 'slide-panel open' },
+          h('div', { className: 'p-4' },
+            h('div', { className: 'flex justify-between items-center mb-4' },
+              h('h2', { 
+                className: 'title text-lg',
+                style: { color: 'var(--navy)' }
+              }, 'Organized View'),
+              h('button', {
+                onClick: () => setShowPanel(false),
+                className: 'wes-button',
+                style: { padding: '0.5rem 1rem', fontSize: '0.75rem' }
+              }, 'Close')
+            ),
+            
+            h('div', { className: 'title-card' },
+              h('div', { 
+                style: { 
+                  fontSize: '0.75rem',
+                  letterSpacing: '3px',
+                  color: 'var(--navy)',
+                  marginBottom: '0.5rem'
+                }
+              }, '═══════════'),
+              h('h3', { className: 'title text-sm' }, 'Your Homestead'),
+              h('div', { 
+                style: { 
+                  fontSize: '0.75rem',
+                  letterSpacing: '3px',
+                  color: 'var(--navy)',
+                  marginTop: '0.5rem'
+                }
+              }, '═══════════')
+            ),
+
+            h('h3', { 
+              className: 'title text-sm mb-3',
+              style: { color: 'var(--navy)' }
+            }, 'Tasks by Module'),
+            
+            ...modules.map(module => {
+              const moduleTasks = tasks[module.id] || [];
+              const pending = moduleTasks.filter(t => !t.completed);
+              if (pending.length === 0) return null;
+              
+              return h('div', {
+                key: module.id,
+                className: 'module-card'
+              },
+                h('div', { className: 'flex items-center gap-2 mb-2' },
+                  h('span', { 
+                    className: 'badge-icon',
+                    style: { background: module.color, fontSize: '1.25rem' }
+                  }, module.icon),
+                  h('h4', { 
+                    className: 'title flex-1 text-sm',
+                    style: { color: 'var(--navy)' }
+                  }, module.name),
+                  h('span', { 
+                    className: 'badge-icon',
+                    style: { 
+                      width: '30px',
+                      height: '30px',
+                      fontSize: '0.75rem',
+                      background: 'var(--coral-red)',
+                      color: 'white'
+                    }
+                  }, pending.length)
+                ),
+                h('ul', { style: { paddingLeft: '1rem' } },
+                  ...pending.slice(0, 3).map(task =>
+                    h('li', {
+                      key: task.id,
+                      style: { 
+                        fontSize: '0.875rem',
+                        marginBottom: '0.25rem',
+                        color: 'var(--navy)'
+                      }
+                    }, task.text)
+                  )
+                ),
+                pending.length > 3 && h('p', { 
+                  style: { 
+                    fontSize: '0.75rem',
+                    marginTop: '0.5rem',
+                    color: 'var(--navy)',
+                    opacity: 0.7
+                  }
+                }, `+${pending.length - 3} more`)
+              );
+            }).filter(Boolean),
+
+            inventory.length > 0 && h('div', null,
+              h('h3', { 
+                className: 'title text-sm mt-6 mb-3',
+                style: { color: 'var(--navy)' }
+              }, 'Recent Inventory'),
+              ...inventory.slice(0, 5).map(item =>
+                h('div', {
+                  key: item.id,
+                  className: 'module-card',
+                  style: { padding: '0.75rem' }
+                },
+                  h('p', { 
+                    style: { fontSize: '0.875rem', color: 'var(--navy)' }
+                  }, item.description),
+                  h('p', { 
+                    style: { 
+                      fontSize: '0.75rem',
+                      marginTop: '0.25rem',
+                      opacity: 0.7,
+                      color: 'var(--navy)'
+                    }
+                  }, item.date)
+                )
+              )
+            )
           )
         )
       );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(h(App));
+    ReactDOM.render(
+      React.createElement(HomesteadApp),
+      document.getElementById('root')
+    );
   </script>
 </body>
 </html>
