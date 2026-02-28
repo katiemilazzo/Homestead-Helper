@@ -32,9 +32,6 @@ print("✓ Firebase connected")
 print("✓ Gemini connected")
 print("✓ Bot initializing...")
 
-# Initialize Telegram application (webhook mode)
-application = Application.builder().token(TELEGRAM_TOKEN).build()
-
 # System prompt
 SYSTEM_PROMPT = """You are a homestead management assistant helping a family manage their farm.
 
@@ -354,11 +351,18 @@ USER_MAP = {'katie': 'siri_katie', 'mike': 'siri_mike', 'abby': 'siri_abby'}
 def telegram_webhook():
     try:
         update_data = request.json
-        update = Update.de_json(update_data, application.bot)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(application.initialize())
-        loop.run_until_complete(application.process_update(update))
+
+        async def process():
+            bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
+            bot_app.add_handler(CommandHandler("start", start))
+            bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+            async with bot_app:
+                update = Update.de_json(update_data, bot_app.bot)
+                await bot_app.process_update(update)
+
+        loop.run_until_complete(process())
         loop.close()
         return jsonify({'status': 'ok'})
     except Exception as e:
